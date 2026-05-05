@@ -25,13 +25,17 @@ afterEach(async () => {
 describe("remote ls grep find", () => {
 	test("local ls/grep/find delegate unchanged and preserve tool metadata", async () => {
 		const calls: unknown[][] = [];
+		const renderCalls: unknown[] = [];
 		const localTool = (name: string) => ({
 			name,
 			label: name,
 			description: "local",
 			promptSnippet: `${name} snippet`,
 			parameters: {},
-			renderCall: () => undefined as never,
+			renderCall: (args: unknown) => {
+				renderCalls.push(args);
+				return undefined as never;
+			},
 			renderResult: () => undefined as never,
 			execute: async (...args: unknown[]) => {
 				calls.push(args);
@@ -46,10 +50,13 @@ describe("remote ls grep find", () => {
 
 		expect(ls.promptSnippet).toBe("ls snippet");
 		expect(typeof ls.renderCall).toBe("function");
+		ls.renderCall({ path: "." } as never, undefined as never, undefined as never);
+		ls.renderCall({ session: "box", path: "." } as never, undefined as never, undefined as never);
 		await ls.execute("ls-id", { path: "." }, undefined, undefined, ctx);
 		await grep.execute("grep-id", { pattern: "needle", path: "." }, undefined, undefined, ctx);
 		await find.execute("find-id", { pattern: "*.ts", path: "." }, undefined, undefined, ctx);
 
+		expect(renderCalls).toEqual([{ path: "." }, { session: "box", path: ". [session: box]" }]);
 		expect(calls).toEqual([
 			["ls-id", { path: "." }, undefined, undefined, ctx],
 			["grep-id", { pattern: "needle", path: "." }, undefined, undefined, ctx],

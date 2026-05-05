@@ -11,6 +11,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import { getRemoteSshStateDir } from "./config.js";
 import { annotateRemoteResult, createRemoteContext, remoteDetails, resolveRemotePath, type RemoteContext } from "./remote-files.js";
+import { renderArgsWithRemotePath } from "./remote-render.js";
 import { SessionManager } from "./session-manager.js";
 import type { SpawnSsh } from "./ssh.js";
 
@@ -58,6 +59,9 @@ export function createRemoteAwareLsTool(cwd: string, options: CreateRemoteSearch
 			limit: Type.Optional(Type.Number({ description: "Maximum number of entries to return (default: 500)" })),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local ls behavior." })),
 		}),
+		renderCall(args: Parameters<NonNullable<typeof localLsTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localLsTool.renderCall>>[1], context: Parameters<NonNullable<typeof localLsTool.renderCall>>[2]) {
+			return localLsTool.renderCall!(renderArgsWithRemotePath(args as LsParams), theme, context);
+		},
 		async execute(toolCallId: string, params: LsParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localLsTool.execute>[3], ctx: Parameters<typeof localLsTool.execute>[4] = undefined as never) {
 			const localParams = withoutSession(params);
 			if (params.session === undefined) return localLsTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
@@ -83,6 +87,9 @@ export function createRemoteAwareFindTool(cwd: string, options: CreateRemoteSear
 			limit: Type.Optional(Type.Number({ description: "Maximum number of results (default: 1000)" })),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local find behavior." })),
 		}),
+		renderCall(args: Parameters<NonNullable<typeof localFindTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localFindTool.renderCall>>[1], context: Parameters<NonNullable<typeof localFindTool.renderCall>>[2]) {
+			return localFindTool.renderCall!(renderArgsWithRemotePath(args as FindParams), theme, context);
+		},
 		async execute(toolCallId: string, params: FindParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localFindTool.execute>[3], ctx: Parameters<typeof localFindTool.execute>[4] = undefined as never) {
 			const localParams = withoutSession(params);
 			if (params.session === undefined) return localFindTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
@@ -112,6 +119,9 @@ export function createRemoteAwareGrepTool(cwd: string, options: CreateRemoteSear
 			limit: Type.Optional(Type.Number({ description: "Maximum number of matches to return (default: 100)" })),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local grep behavior." })),
 		}),
+		renderCall(args: Parameters<NonNullable<typeof localGrepTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localGrepTool.renderCall>>[1], context: Parameters<NonNullable<typeof localGrepTool.renderCall>>[2]) {
+			return localGrepTool.renderCall!(renderArgsWithRemotePath(args as GrepParams), theme, context);
+		},
 		async execute(toolCallId: string, params: GrepParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localGrepTool.execute>[3], ctx: Parameters<typeof localGrepTool.execute>[4] = undefined as never) {
 			const localParams = withoutSession(params);
 			if (params.session === undefined) return localGrepTool.execute(toolCallId, localParams, signal, onUpdate, ctx);

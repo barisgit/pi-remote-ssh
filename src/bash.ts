@@ -1,6 +1,7 @@
 import { Type } from "@mariozechner/pi-ai";
 import { createBashToolDefinition, type BashOperations, type BashToolDetails } from "@mariozechner/pi-coding-agent";
 import { getRemoteSshStateDir } from "./config.js";
+import { renderArgsWithRemoteCommand } from "./remote-render.js";
 import { SessionManager, type RuntimeSession } from "./session-manager.js";
 import { runRemoteSh, shellQuote, type SpawnSsh, type SshRunResult } from "./ssh.js";
 
@@ -42,6 +43,9 @@ export function createRemoteAwareBashTool(cwd: string, options: CreateRemoteBash
 			timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local bash behavior." })),
 		}),
+		renderCall(args: Parameters<NonNullable<typeof localBashTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localBashTool.renderCall>>[1], context: Parameters<NonNullable<typeof localBashTool.renderCall>>[2]) {
+			return localBashTool.renderCall!(renderArgsWithRemoteCommand(args as BashParams), theme, context);
+		},
 		async execute(toolCallId: string, params: BashParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localBashTool.execute>[3], ctx: Parameters<typeof localBashTool.execute>[4] = undefined as never) {
 			const localParams = params.timeout === undefined ? { command: params.command } : { command: params.command, timeout: params.timeout };
 			if (params.session === undefined) {

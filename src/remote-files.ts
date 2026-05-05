@@ -10,6 +10,7 @@ import {
 } from "@mariozechner/pi-coding-agent";
 import * as path from "node:path";
 import { getRemoteSshStateDir } from "./config.js";
+import { renderArgsWithRemotePath } from "./remote-render.js";
 import { SessionManager, type RuntimeSession } from "./session-manager.js";
 import { runRemoteSh, shellQuote, type SpawnSsh, type SshRunOptions } from "./ssh.js";
 import { assertLocalEditableFile, assertRemoteEditableContent, stripHashlinePrefixes } from "./write-enhancements.js";
@@ -62,6 +63,9 @@ export function createRemoteAwareReadTool(cwd: string, options: CreateRemoteFile
 			limit: Type.Optional(Type.Number({ description: "Maximum number of lines to read" })),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local read behavior." })),
 		}),
+		renderCall(args: Parameters<NonNullable<typeof localReadTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localReadTool.renderCall>>[1], context: Parameters<NonNullable<typeof localReadTool.renderCall>>[2]) {
+			return localReadTool.renderCall!(renderArgsWithRemotePath(args as ReadParams), theme, context);
+		},
 		async execute(toolCallId: string, params: ReadParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localReadTool.execute>[3], ctx: Parameters<typeof localReadTool.execute>[4] = undefined as never) {
 			const localParams = withoutSession(params);
 			if (params.session === undefined) return localReadTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
@@ -86,6 +90,9 @@ export function createRemoteAwareWriteTool(cwd: string, options: CreateRemoteFil
 			content: Type.String({ description: "Content to write to the file" }),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local write behavior." })),
 		}),
+		renderCall(args: Parameters<NonNullable<typeof localWriteTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localWriteTool.renderCall>>[1], context: Parameters<NonNullable<typeof localWriteTool.renderCall>>[2]) {
+			return localWriteTool.renderCall!(renderArgsWithRemotePath(args as WriteParams), theme, context);
+		},
 		async execute(toolCallId: string, params: WriteParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localWriteTool.execute>[3], ctx: Parameters<typeof localWriteTool.execute>[4] = undefined as never) {
 			const { text: cleanContent, stripped } = stripHashlinePrefixes(params.content);
 			if (params.session === undefined) {
@@ -120,6 +127,9 @@ export function createRemoteAwareEditTool(cwd: string, options: CreateRemoteFile
 			edits: Type.Array(Type.Object({ oldText: Type.String(), newText: Type.String() })),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local edit behavior." })),
 		}),
+		renderCall(args: Parameters<NonNullable<typeof localEditTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localEditTool.renderCall>>[1], context: Parameters<NonNullable<typeof localEditTool.renderCall>>[2]) {
+			return localEditTool.renderCall!(renderArgsWithRemotePath(args as EditParams), theme, context);
+		},
 		async execute(toolCallId: string, params: EditParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localEditTool.execute>[3], ctx: Parameters<typeof localEditTool.execute>[4] = undefined as never) {
 			const localParams = withoutSession(params);
 			if (params.session === undefined) return localEditTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
