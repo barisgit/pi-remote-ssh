@@ -1,0 +1,30 @@
+{
+  "name": "pi-remote-ssh",
+  "version": "0.1.0",
+  "description": "Pi extension for named SSH sessions and remote-aware tools.",
+  "type": "module",
+  "main": "src/index.ts",
+  "exports": {
+    ".": "./src/index.ts"
+  },
+  "pi": {
+    "extensions": ["./src/index.ts"]
+  },
+  "scripts": {
+    "test": "bun test",
+    "typecheck": "tsc --noEmit"
+  },
+  "keywords": ["pi", "extension", "ssh", "remote"],
+  "license": "MIT",
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*",
+    "@mariozechner/pi-ai": "*"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "latest",
+    "typescript": "latest",
+    "@mariozechner/pi-coding-agent": "latest",
+    "@mariozechner/pi-ai": "latest"
+  }
+}
