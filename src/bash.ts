@@ -66,15 +66,9 @@ export function createRemoteAwareBashTool(cwd: string, options: CreateRemoteBash
 				socket: operations.socketAvailable ? "available" : "unavailable",
 			};
 			if (finalSession.remote_cwd !== undefined) details.cwd = finalSession.remote_cwd;
-			return { ...annotateRemoteBashResult(result, details), details };
+			return { ...result, details };
 		},
 	};
-}
-
-function annotateRemoteBashResult<T extends { content?: Array<{ type: string; text?: string }> }>(result: T, details: RemoteBashDetails): T {
-	const firstText = result.content?.find((item) => item.type === "text" && typeof item.text === "string");
-	if (firstText) firstText.text += `\n\n[remote: ${details.session} -> ${details.target}, cwd: ${details.cwd ?? "<unknown>"}, socket: ${details.socket ?? "unknown"}]`;
-	return result;
 }
 
 class RemoteBashOperations implements BashOperations {

@@ -10,7 +10,7 @@ import {
 	type LsOperations,
 } from "@mariozechner/pi-coding-agent";
 import { getRemoteSshStateDir } from "./config.js";
-import { annotateRemoteResult, createRemoteContext, remoteDetails, resolveRemotePath, type RemoteContext } from "./remote-files.js";
+import { createRemoteContext, remoteDetails, resolveRemotePath, type RemoteContext } from "./remote-files.js";
 import { renderArgsWithRemotePath } from "./remote-render.js";
 import { SessionManager } from "./session-manager.js";
 import type { SpawnSsh } from "./ssh.js";
@@ -71,7 +71,7 @@ export function createRemoteAwareLsTool(cwd: string, options: CreateRemoteSearch
 			const result = await remoteTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
 			await remote.markUsed();
 			const details = remoteDetails(remote, resolveRemotePath(remote.cwd, params.path ?? "."));
-			return { ...annotateRemoteResult(result, details), details: { ...(result.details ?? {}), ...details } };
+			return { ...result, details: { ...(result.details ?? {}), ...details } };
 		},
 	};
 }
@@ -99,7 +99,7 @@ export function createRemoteAwareFindTool(cwd: string, options: CreateRemoteSear
 			const result = await remoteTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
 			await remote.markUsed();
 			const details = remoteDetails(remote, resolveRemotePath(remote.cwd, params.path ?? "."));
-			return { ...annotateRemoteResult(result, details), details: { ...(result.details ?? {}), ...details } };
+			return { ...result, details: { ...(result.details ?? {}), ...details } };
 		},
 	};
 }
@@ -139,7 +139,7 @@ export function createRemoteAwareGrepTool(cwd: string, options: CreateRemoteSear
 			await remote.markUsed();
 			if (!helper.output) {
 				const details = { ...remoteDetails(remote, remotePath) } as GrepToolDetails & ReturnType<typeof remoteDetails>;
-				return annotateRemoteResult({ content: [{ type: "text" as const, text: "No matches found" }], details }, details);
+				return { content: [{ type: "text" as const, text: "No matches found" }], details };
 			}
 			const truncation = truncateHead(helper.output, { maxLines: Number.MAX_SAFE_INTEGER });
 			let output = truncation.content;
@@ -154,7 +154,7 @@ export function createRemoteAwareGrepTool(cwd: string, options: CreateRemoteSear
 				details.truncation = truncation;
 			}
 			if (notices.length > 0) output += `\n\n[${notices.join(". ")}]`;
-			return annotateRemoteResult({ content: [{ type: "text" as const, text: output }], details }, details);
+			return { content: [{ type: "text" as const, text: output }], details };
 		},
 	};
 }

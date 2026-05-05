@@ -75,7 +75,7 @@ export function createRemoteAwareReadTool(cwd: string, options: CreateRemoteFile
 			const result = await remoteTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
 			await remote.markUsed();
 			const details = remoteDetails(remote, resolveRemotePath(remote.cwd, params.path));
-			return { ...annotateRemoteResult(result, details), details: { ...(result.details ?? {}), ...details } };
+			return { ...result, details: { ...(result.details ?? {}), ...details } };
 		},
 	};
 }
@@ -112,7 +112,7 @@ export function createRemoteAwareWriteTool(cwd: string, options: CreateRemoteFil
 			await remote.markUsed();
 			const withNote = appendHashlineNote(result, stripped);
 			const details = remoteDetails(remote, remotePath);
-			return { ...annotateRemoteResult(withNote, details), details: { ...((withNote as any).details ?? {}), ...details } };
+			return { ...withNote, details: { ...((withNote as any).details ?? {}), ...details } };
 		},
 	};
 }
@@ -138,7 +138,7 @@ export function createRemoteAwareEditTool(cwd: string, options: CreateRemoteFile
 			await remote.markUsed();
 			const remoteMetadata = remoteDetails(remote, remotePath);
 			const details = { ...(result.details as EditToolDetails), ...remoteMetadata };
-			return { ...annotateRemoteResult(result, remoteMetadata), details };
+			return { ...result, details };
 		},
 	};
 }
@@ -253,11 +253,6 @@ export function remoteDetails(remote: RemoteContext, remotePath: string): Remote
 	return { remote: true, session: remote.session.path, target: remote.session.target, cwd: remote.cwd, path: remotePath };
 }
 
-export function annotateRemoteResult<T extends { content?: Array<{ type: string; text?: string }> }>(result: T, details: RemoteDetails): T {
-	const firstText = result.content?.find((item) => item.type === "text" && typeof item.text === "string");
-	if (firstText) firstText.text += `\n\n[remote: ${details.session} -> ${details.target}, cwd: ${details.cwd ?? "<unknown>"}]`;
-	return result;
-}
 
 function withoutSession<T extends { session?: string }>(params: T): Omit<T, "session"> {
 	const { session: _session, ...rest } = params;
