@@ -53,14 +53,14 @@ Unlike the earlier explicit `remote_ssh_read`/`remote_ssh_bash` idea, v1 should 
 ## 4. Non-goals
 
 - Do not implement a generic SSH client UI.
-- Do not add remote `ls`/`find`/`grep` tools initially; `bash` with a `session` can run those.
+- Do not add a separate remote-only `ls`/`find`/`grep` tool surface; the normal `ls`, `find`, and `grep` tools are wrapped with optional `session` just like the file tools.
 - Do not add `remote_ssh_read_output`; long local output should be saved to a local temp file and inspected with Pi's normal `read`.
 - Do not implement a second path permission system; external permission-policy extensions can enforce restrictions.
 - Discourage secrets in saved `ssh_args`, but do not try to detect/block every secret value; document that passwords/tokens do not belong in session definitions.
 
 ## 5. Tool set
 
-Initial extension adds 3 lifecycle tools and overrides/wraps 5 normal Pi tools.
+Initial extension adds 3 lifecycle tools and overrides/wraps 8 normal Pi tools.
 
 Added tools:
 
@@ -112,6 +112,30 @@ edit: {
     oldText: string,
     newText: string
   }>,
+  session?: string
+}
+
+ls: {
+  path?: string,
+  limit?: number,
+  session?: string
+}
+
+grep: {
+  pattern: string,
+  path?: string,
+  glob?: string,
+  ignoreCase?: boolean,
+  literal?: boolean,
+  context?: number,
+  limit?: number,
+  session?: string
+}
+
+find: {
+  pattern: string,
+  path?: string,
+  limit?: number,
   session?: string
 }
 
@@ -453,7 +477,7 @@ The implementation can ship incrementally:
 
 1. Registry, locking, lifecycle tools, managed socket derivation/cleanup.
 2. Remote `bash` with optional `session?: string`; this is an acceptable MVP stopping point if enough.
-3. Remote `read`, `write`, and `edit` parity using `python3` helpers.
+3. Remote `read`, `write`, `edit`, `ls`, `grep`, and `find` parity using `python3` helpers where appropriate.
 4. Native `apply_patch` parity, replacing the current custom extension.
 
 If remote `python3` is missing, remote file tools fail clearly, while remote `bash` can still work.
@@ -466,10 +490,11 @@ Minimum tests:
 - session list returns saved sessions according to prefix/depth/view
 - session delete removes saved sessions and handles missing sessions clearly
 - relative path resolution anchors at `remote_cwd`; absolute paths are preserved as remote absolute paths
-- omitted `session` calls for read/write/edit/bash pass through to Pi built-ins unchanged, verified with mocks/spies
+- omitted `session` calls for read/write/edit/ls/grep/find/bash pass through to Pi built-ins unchanged, verified with mocks/spies
 - read supports `offset`/`limit`
 - write is atomic and preserves exact content
 - edit rejects zero/multiple matches and applies all valid edits atomically
+- ls/grep/find anchor relative remote paths at `remote_cwd` and preserve built-in visible result shapes as much as practical
 - apply_patch rejects unmatched hunks, supports custom extension grammar, blocks auto-generated files as current custom extension does, preserves fuzzy matching behavior, and preserves remote path semantics
 - bash returns exit code/stdout/stderr like Pi bash and writes large output to local temp file
 
@@ -477,7 +502,7 @@ Manual integration check:
 
 1. Start a local SSH target or test container with sshd.
 2. Create a session with `remote_cwd` at a temp remote directory.
-3. Run `write`, `read`, `edit`, and `apply_patch` with `session` against test files.
+3. Run `write`, `read`, `edit`, `ls`, `grep`, `find`, and `apply_patch` with `session` against test files.
 4. Run `bash` with `session` for short output and large output.
 5. Inspect large output via normal Pi `read`.
 6. Delete the session.

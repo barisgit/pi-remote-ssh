@@ -63,7 +63,7 @@ _Avoid_: remote file tool, overloaded session action
 - Remote `edit` enforces Pi's exact-text uniqueness and non-overlap rules.
 - Remote `read` uses Pi's 1-indexed `offset` and `limit` semantics exactly.
 - Lifecycle tool names are `remote_ssh_list`, `remote_ssh_create_session`, and `remote_ssh_delete_session`.
-- The extension overrides/routes normal `read`, `write`, `edit`, `apply_patch`, and `bash` by optional `session?: string`.
+- The extension overrides/routes normal `bash`, `read`, `write`, `edit`, `ls`, `grep`, `find`, and eventually `apply_patch` by optional `session?: string`.
 - If remote `python3` is missing, remote file tools fail clearly, while remote `bash` can still work.
 - Implementation can ship in slices; registry/lifecycle + remote bash is an acceptable stopping point/MVP before file tools and apply_patch parity.
 - Remote-mode tool labels should include **Session Path** and resolved remote path/cwd when practical.
@@ -77,6 +77,7 @@ _Avoid_: remote file tool, overloaded session action
 - If ControlMaster fails, remote operations may retry plain `ssh` and should report socket unavailability in details.
 - Remote file tools require `python3`; no shell-utility fallback in v1.
 - Remote `bash` runs through deterministic `sh -lc` with a safely quoted `cd "$remote_cwd" && <command>` wrapper, not login-shell magic.
+- Remote `ls`, `grep`, and `find` use the selected **Session** `remote_cwd` for relative paths and preserve **Local Mode** behavior when `session` is omitted.
 - `remote_ssh_list` never opens network connections; it only reports registry and cheap local socket/control-master status.
 - Remote image/attachment reads are explicitly unsupported in v1.
 - A **Lifecycle Tool** manages **Sessions** but does not read, write, patch, or run project commands.

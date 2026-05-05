@@ -6,6 +6,8 @@ import type { RuntimeSession } from "./session-manager.js";
 
 export interface SshRunOptions {
 	onData?: (data: Buffer) => void;
+	onStdout?: (data: Buffer) => void;
+	onStderr?: (data: Buffer) => void;
 	signal?: AbortSignal;
 	timeout?: number;
 }
@@ -28,6 +30,8 @@ export async function runRemoteSh(session: RuntimeSession, script: string, optio
 	const controlArgs = buildSshArgs(session, true, script);
 	const controlled = await runSshProcess(controlArgs, options, spawnSsh, { streamOutput: false });
 	if (!shouldRetryWithoutControl(controlled)) {
+		for (const chunk of controlled.stdoutChunks) options.onStdout?.(chunk);
+		for (const chunk of controlled.stderrChunks) options.onStderr?.(chunk);
 		for (const chunk of controlled.chunks) options.onData?.(chunk);
 		return { exitCode: controlled.exitCode, socketAvailable: true };
 	}
@@ -52,6 +56,8 @@ interface RawSshResult {
 	exitCode: number | null;
 	output: string;
 	chunks: Buffer[];
+	stdoutChunks: Buffer[];
+	stderrChunks: Buffer[];
 }
 
 function runSshProcess(args: string[], options: SshRunOptions, spawnSsh: SpawnSsh, processOptions: { streamOutput: boolean }): Promise<RawSshResult> {
@@ -64,6 +70,8 @@ function runSshProcess(args: string[], options: SshRunOptions, spawnSsh: SpawnSs
 		let timedOut = false;
 		let timeoutHandle: NodeJS.Timeout | undefined;
 		const chunks: Buffer[] = [];
+		const stdoutChunks: Buffer[] = [];
+		const stderrChunks: Buffer[] = [];
 
 		const finish = (fn: () => void) => {
 			if (settled) return;
@@ -78,19 +86,31 @@ function runSshProcess(args: string[], options: SshRunOptions, spawnSsh: SpawnSs
 		const onAbort = () => {
 			killChild();
 		};
-		const onData = (data: Buffer) => {
+		const onStdout = (data: Buffer) => {
+			stdoutChunks.push(data);
 			chunks.push(data);
-			if (processOptions.streamOutput) options.onData?.(data);
+			if (processOptions.streamOutput) {
+				options.onStdout?.(data);
+				options.onData?.(data);
+			}
+		};
+		const onStderr = (data: Buffer) => {
+			stderrChunks.push(data);
+			chunks.push(data);
+			if (processOptions.streamOutput) {
+				options.onStderr?.(data);
+				options.onData?.(data);
+			}
 		};
 
-		child.stdout.on("data", onData);
-		child.stderr.on("data", onData);
+		child.stdout.on("data", onStdout);
+		child.stderr.on("data", onStderr);
 		child.on("error", (error) => finish(() => reject(error)));
 		child.on("close", (code) => {
 			finish(() => {
 				if (options.signal?.aborted) reject(new Error("aborted"));
 				else if (timedOut) reject(new Error(`timeout:${options.timeout}`));
-				else resolve({ exitCode: code, output: Buffer.concat(chunks).toString("utf8"), chunks });
+				else resolve({ exitCode: code, output: Buffer.concat(chunks).toString("utf8"), chunks, stdoutChunks, stderrChunks });
 			});
 		});
 

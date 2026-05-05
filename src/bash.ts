@@ -1,5 +1,5 @@
 import { Type } from "@mariozechner/pi-ai";
-import { createBashTool, type BashOperations, type BashToolDetails } from "@mariozechner/pi-coding-agent";
+import { createBashToolDefinition, type BashOperations, type BashToolDetails } from "@mariozechner/pi-coding-agent";
 import { getRemoteSshStateDir } from "./config.js";
 import { SessionManager, type RuntimeSession } from "./session-manager.js";
 import { runRemoteSh, shellQuote, type SpawnSsh, type SshRunResult } from "./ssh.js";
@@ -15,7 +15,7 @@ export interface RemoteBashDetails extends BashToolDetails {
 export interface CreateRemoteBashToolOptions {
 	managerFactory?: () => SessionManager;
 	spawnSsh?: SpawnSsh;
-	localBashTool?: ReturnType<typeof createBashTool>;
+	localBashTool?: ReturnType<typeof createBashToolDefinition>;
 }
 
 interface BashParams {
@@ -31,7 +31,7 @@ interface ExecOptions {
 }
 
 export function createRemoteAwareBashTool(cwd: string, options: CreateRemoteBashToolOptions = {}) {
-	const localBashTool = options.localBashTool ?? createBashTool(cwd);
+	const localBashTool = options.localBashTool ?? createBashToolDefinition(cwd);
 	const managerFactory = options.managerFactory ?? (() => new SessionManager({ stateDir: getRemoteSshStateDir() }));
 	const spawnSsh = options.spawnSsh;
 
@@ -42,17 +42,17 @@ export function createRemoteAwareBashTool(cwd: string, options: CreateRemoteBash
 			timeout: Type.Optional(Type.Number({ description: "Timeout in seconds (optional, no default timeout)" })),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local bash behavior." })),
 		}),
-		async execute(toolCallId: string, params: BashParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localBashTool.execute>[3]) {
+		async execute(toolCallId: string, params: BashParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localBashTool.execute>[3], ctx: Parameters<typeof localBashTool.execute>[4] = undefined as never) {
 			const localParams = params.timeout === undefined ? { command: params.command } : { command: params.command, timeout: params.timeout };
 			if (params.session === undefined) {
-				return localBashTool.execute(toolCallId, localParams, signal, onUpdate);
+				return localBashTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
 			}
 
 			const manager = managerFactory();
 			const session = await manager.getSession(params.session);
 			const operations = new RemoteBashOperations(manager, session, spawnSsh);
-			const remoteBashTool = createBashTool(cwd, { operations });
-			const result = await remoteBashTool.execute(toolCallId, localParams, signal, onUpdate);
+			const remoteBashTool = createBashToolDefinition(cwd, { operations });
+			const result = await remoteBashTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
 			const finalSession = operations.currentSession;
 			const details: RemoteBashDetails = {
 				...(result.details ?? {}),
@@ -62,9 +62,15 @@ export function createRemoteAwareBashTool(cwd: string, options: CreateRemoteBash
 				socket: operations.socketAvailable ? "available" : "unavailable",
 			};
 			if (finalSession.remote_cwd !== undefined) details.cwd = finalSession.remote_cwd;
-			return { ...result, details };
+			return { ...annotateRemoteBashResult(result, details), details };
 		},
 	};
+}
+
+function annotateRemoteBashResult<T extends { content?: Array<{ type: string; text?: string }> }>(result: T, details: RemoteBashDetails): T {
+	const firstText = result.content?.find((item) => item.type === "text" && typeof item.text === "string");
+	if (firstText) firstText.text += `\n\n[remote: ${details.session} -> ${details.target}, cwd: ${details.cwd ?? "<unknown>"}, socket: ${details.socket ?? "unknown"}]`;
+	return result;
 }
 
 class RemoteBashOperations implements BashOperations {
