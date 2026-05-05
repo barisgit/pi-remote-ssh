@@ -127,9 +127,6 @@ export function createRemoteAwareEditTool(cwd: string, options: CreateRemoteFile
 			edits: Type.Array(Type.Object({ oldText: Type.String(), newText: Type.String() })),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local edit behavior." })),
 		}),
-		renderCall(args: Parameters<NonNullable<typeof localEditTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localEditTool.renderCall>>[1], context: Parameters<NonNullable<typeof localEditTool.renderCall>>[2]) {
-			return localEditTool.renderCall!(renderArgsWithRemotePath(args as EditParams), theme, context);
-		},
 		async execute(toolCallId: string, params: EditParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localEditTool.execute>[3], ctx: Parameters<typeof localEditTool.execute>[4] = undefined as never) {
 			const localParams = withoutSession(params);
 			if (params.session === undefined) return localEditTool.execute(toolCallId, localParams, signal, onUpdate, ctx);
