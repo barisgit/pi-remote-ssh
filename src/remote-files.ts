@@ -1,4 +1,5 @@
 import { Type } from "@mariozechner/pi-ai";
+import { Text } from "@mariozechner/pi-tui";
 import {
 	createEditToolDefinition,
 	createReadToolDefinition,
@@ -127,6 +128,13 @@ export function createRemoteAwareEditTool(cwd: string, options: CreateRemoteFile
 			edits: Type.Array(Type.Object({ oldText: Type.String(), newText: Type.String() })),
 			session: Type.Optional(Type.String({ description: "Optional Pi Remote SSH session path. Omit for unchanged local edit behavior." })),
 		}),
+		renderCall(args: Parameters<NonNullable<typeof localEditTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localEditTool.renderCall>>[1], context: Parameters<NonNullable<typeof localEditTool.renderCall>>[2]) {
+			const editArgs = args as EditParams;
+			if (editArgs.session === undefined) return localEditTool.renderCall!(args, theme, context);
+			const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
+			text.setText(`${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", editArgs.path)} ${theme.fg("muted", `[session: ${editArgs.session}]`)}`);
+			return text;
+		},
 		async execute(toolCallId: string, params: EditParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localEditTool.execute>[3], ctx: Parameters<typeof localEditTool.execute>[4] = undefined as never) {
 			const localParams = withoutSession(params);
 			if (params.session === undefined) return localEditTool.execute(toolCallId, localParams, signal, onUpdate, ctx);

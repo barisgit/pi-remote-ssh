@@ -62,6 +62,30 @@ describe("slice 3 remote file tools", () => {
 		expect(called).toBe(false);
 	});
 
+	test("remote edit renderCall shows session without invoking local preview renderer", () => {
+		let localRenderCalls = 0;
+		const localEditTool = {
+			name: "edit",
+			label: "edit",
+			description: "local",
+			parameters: {},
+			renderCall: () => {
+				localRenderCalls += 1;
+				return undefined as never;
+			},
+			execute: async () => ({ content: [{ type: "text" as const, text: "edited" }] }),
+		};
+		const tool = createRemoteAwareEditTool(workspace, { managerFactory: () => manager, localEditTool: localEditTool as never });
+		const theme = fakeTheme();
+		const localResult = tool.renderCall({ path: "local.txt", edits: [] } as never, theme as never, { lastComponent: undefined } as never);
+		const remoteResult = tool.renderCall({ session: "box", path: "/tmp/file.txt", edits: [] } as never, theme as never, { lastComponent: undefined } as never);
+
+		expect(localResult).toBeUndefined();
+		expect(localRenderCalls).toBe(1);
+		expect(remoteResult.render(120).join("\n")).toContain("[session: box]");
+		expect(localRenderCalls).toBe(1);
+	});
+
 	test("remote read uses remote_cwd for relative paths and Pi offset\/limit formatting", async () => {
 		await manager.createSession({ path: "box", target: "host", remote_cwd: "/srv/app" });
 		const remote = createRemoteFs({ "/srv/app/file.txt": "line1\nline2\nline3\n" });
@@ -145,6 +169,13 @@ interface RemoteOp {
 
 function textContent(result: { content: Array<{ type: string; text?: string }> }): string {
 	return result.content.find((item) => item.type === "text")?.text ?? "";
+}
+
+function fakeTheme() {
+	return {
+		bold: (text: string) => text,
+		fg: (_color: string, text: string) => text,
+	};
 }
 
 function createRemoteFs(initialFiles: Record<string, string>) {
