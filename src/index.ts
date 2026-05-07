@@ -5,6 +5,7 @@ import { createRemoteAwareBashTool } from "./bash.js";
 import { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "./remote-files.js";
 import { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "./remote-search.js";
 import { SessionManager, type ListSessionsInput } from "./session-manager.js";
+import { installToolOutputVisibility, withCompactHiddenResult } from "./tool-output-visibility.js";
 
 function createSessionManager(): SessionManager {
 	return new SessionManager({ stateDir: getRemoteSshStateDir() });
@@ -78,16 +79,17 @@ const deleteSessionTool = defineTool({
 });
 
 export default function (pi: ExtensionAPI) {
+	installToolOutputVisibility();
 	pi.registerTool(createSessionTool);
 	pi.registerTool(listTool);
 	pi.registerTool(deleteSessionTool);
 	pi.registerTool(createRemoteAwareBashTool(process.cwd(), { managerFactory: createSessionManager }));
-	pi.registerTool(createRemoteAwareReadTool(process.cwd(), { managerFactory: createSessionManager }));
+	pi.registerTool(withCompactHiddenResult(createRemoteAwareReadTool(process.cwd(), { managerFactory: createSessionManager })));
 	pi.registerTool(createRemoteAwareWriteTool(process.cwd(), { managerFactory: createSessionManager }));
 	pi.registerTool(createRemoteAwareEditTool(process.cwd(), { managerFactory: createSessionManager }));
-	pi.registerTool(createRemoteAwareLsTool(process.cwd(), { managerFactory: createSessionManager }));
-	pi.registerTool(createRemoteAwareGrepTool(process.cwd(), { managerFactory: createSessionManager }));
-	pi.registerTool(createRemoteAwareFindTool(process.cwd(), { managerFactory: createSessionManager }));
+	pi.registerTool(withCompactHiddenResult(createRemoteAwareLsTool(process.cwd(), { managerFactory: createSessionManager })));
+	pi.registerTool(withCompactHiddenResult(createRemoteAwareGrepTool(process.cwd(), { managerFactory: createSessionManager })));
+	pi.registerTool(withCompactHiddenResult(createRemoteAwareFindTool(process.cwd(), { managerFactory: createSessionManager })));
 }
 
 function renderList(entries: Array<{ path: string; type?: "namespace"; target?: string; remote_cwd?: string; socket_status?: string }>, view: "compact" | "full"): string {
