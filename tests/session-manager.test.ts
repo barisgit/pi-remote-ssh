@@ -47,6 +47,48 @@ describe("slice 1 session registry and lifecycle", () => {
 		expect((await manager.listSessions()).entries).toEqual([]);
 	});
 
+	test("batch create and delete sessions are atomic", async () => {
+		const created = await manager.createSessions({
+			sessions: [
+				{ path: "lab/pi-01", target: "pi01.example.invalid", remote_cwd: "/tmp" },
+				{ path: "lab/pi-02", target: "pi02.example.invalid", port: 2222 },
+			],
+		});
+		expect(created.map((session) => session.path)).toEqual(["lab/pi-01", "lab/pi-02"]);
+		expect((await manager.listSessions()).entries.map((entry) => entry.path)).toEqual(["lab/pi-01", "lab/pi-02"]);
+
+		await expect(
+			manager.createSessions({
+				sessions: [
+					{ path: "lab/pi-03", target: "pi03.example.invalid" },
+					{ path: "lab/pi-01", target: "replacement.example.invalid" },
+				],
+			}),
+		).rejects.toThrow(/already exists/);
+		expect((await manager.listSessions()).entries.map((entry) => entry.path)).toEqual(["lab/pi-01", "lab/pi-02"]);
+
+		const deleted = await manager.deleteSessions({ paths: ["lab/pi-01", "lab/pi-02"] });
+		expect(deleted.map((session) => session.path)).toEqual(["lab/pi-01", "lab/pi-02"]);
+		expect((await manager.listSessions()).entries).toEqual([]);
+	});
+
+	test("batch create/delete reject duplicates and missing paths without partial writes", async () => {
+		await expect(
+			manager.createSessions({
+				sessions: [
+					{ path: "dup", target: "first.example.invalid" },
+					{ path: "dup", target: "second.example.invalid" },
+				],
+			}),
+		).rejects.toThrow(/Duplicate SSH session path/);
+		expect((await manager.listSessions()).entries).toEqual([]);
+
+		await manager.createSessions({ sessions: [{ path: "kept", target: "kept.example.invalid" }] });
+		await expect(manager.deleteSessions({ paths: ["kept", "missing"] })).rejects.toThrow(/does not exist/);
+		expect((await manager.listSessions()).entries.map((entry) => entry.path)).toEqual(["kept"]);
+		await expect(manager.deleteSessions({ paths: ["kept", "kept"] })).rejects.toThrow(/Duplicate SSH session path/);
+	});
+
 	test("duplicate paths fail and do not overwrite existing registry entry", async () => {
 		await manager.createSession({ path: "home-vps", target: "first.example.invalid", remote_cwd: "/home/first" });
 		await expect(manager.createSession({ path: "home-vps", target: "second.example.invalid", remote_cwd: "/home/second" })).rejects.toThrow(/already exists/);

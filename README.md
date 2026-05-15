@@ -23,6 +23,14 @@ Not implemented yet:
 
 - Remote/native `apply_patch`
 
+Remote bash notes:
+
+- Exact `bash({ session: "group/host", command })` behavior is unchanged.
+- `bash({ session: "group/*", command })` expands direct child sessions locally, runs the command with bounded concurrency, and returns one aggregated tool result with grouped per-session output and `details.batch === true`.
+- `bash({ session: "group/**", command })` expands all descendant sessions recursively.
+- `bash({ session: "*", command })` expands direct root sessions; `bash({ session: "**", command })` expands all sessions.
+- `connect_timeout` sets OpenSSH `ConnectTimeout` separately from the overall command `timeout`.
+
 Remote file tool notes:
 
 - Remote file tools require `python3` on the remote host.
@@ -30,3 +38,5 @@ Remote file tool notes:
 - Remote image reads are reported as unsupported; use remote `bash` for image metadata or transfer workflows.
 
 Lifecycle tools never probe remote hosts during create/list. Sessions may point at offline or unreachable hosts and will be saved for future remote use.
+
+`remote_ssh_create_session` accepts either a single top-level `{ path, target, ... }` session or `sessions: [...]` for an atomic batch create. `remote_ssh_delete_session` accepts either `path` or `paths: [...]` for an atomic batch delete. No additional batch tool names are registered.

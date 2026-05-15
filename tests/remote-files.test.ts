@@ -210,7 +210,8 @@ function createRemoteFs(initialFiles: Record<string, string>) {
 }
 
 function decodeRequest(script: string): any {
-	const match = /python3 - '([^']+)'/.exec(script);
+	const unquoted = script.replace(/^'/, "").replace(/'$/, "").replaceAll("'\\''", "'");
+	const match = /python3 - '([^']+)'/.exec(unquoted);
 	if (!match) throw new Error(`Expected remote python helper script, got: ${script}`);
 	return JSON.parse(Buffer.from(match[1]!, "base64").toString("utf8"));
 }

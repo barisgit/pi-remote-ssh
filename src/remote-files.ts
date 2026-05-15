@@ -13,7 +13,7 @@ import * as path from "node:path";
 import { getRemoteSshStateDir } from "./config.js";
 import { renderArgsWithRemotePath } from "./remote-render.js";
 import { SessionManager, type RuntimeSession } from "./session-manager.js";
-import { runRemoteSh, shellQuote, type SpawnSsh, type SshRunOptions } from "./ssh.js";
+import { createHomeResolutionError, createHomeResolutionThrownError, runRemoteSh, shellQuote, type SpawnSsh, type SshRunOptions } from "./ssh.js";
 import { assertLocalEditableFile, assertRemoteEditableContent, stripHashlinePrefixes } from "./write-enhancements.js";
 
 export interface CreateRemoteFileToolOptions {
@@ -228,13 +228,17 @@ class RemoteEditOperations implements EditOperations {
 export async function createRemoteContext(manager: SessionManager, sessionPath: string, spawnSsh: SpawnSsh | undefined, signal?: AbortSignal): Promise<RemoteContext> {
 	let session = await manager.getSession(sessionPath);
 	if (session.remote_cwd === undefined) {
-		const chunks: Buffer[] = [];
-		const runOptions = sshOptions({ onStdout: (data) => { chunks.push(data); }, signal });
-		const result = spawnSsh === undefined
-			? await runRemoteSh(session, "printf '%s\\n' \"$HOME\"", runOptions)
-			: await runRemoteSh(session, "printf '%s\\n' \"$HOME\"", runOptions, spawnSsh);
-		if (result.exitCode !== 0) throw new Error(`Failed to resolve remote $HOME for SSH session "${session.path}".`);
-		const home = Buffer.concat(chunks).toString("utf8").trimEnd().split("\n").at(-1)?.trim();
+		const stdoutChunks: Buffer[] = [];
+		const stderrChunks: Buffer[] = [];
+		const runOptions = sshOptions({ onStdout: (data) => { stdoutChunks.push(data); }, onStderr: (data) => { stderrChunks.push(data); }, signal });
+		const result = await (spawnSsh === undefined
+			? runRemoteSh(session, "printf '%s\\n' \"$HOME\"", runOptions)
+			: runRemoteSh(session, "printf '%s\\n' \"$HOME\"", runOptions, spawnSsh))
+			.catch((error: unknown) => {
+				throw createHomeResolutionThrownError(session.path, session.target, error);
+			});
+		if (result.exitCode !== 0) throw createHomeResolutionError(session.path, session.target, Buffer.concat([...stdoutChunks, ...stderrChunks]).toString("utf8"));
+		const home = Buffer.concat(stdoutChunks).toString("utf8").trimEnd().split("\n").at(-1)?.trim();
 		if (!home?.startsWith("/")) throw new Error(`Resolved remote $HOME for SSH session "${session.path}" is not an absolute path.`);
 		session = await manager.updateSessionAfterUse(session.path, { remote_cwd: home });
 	}

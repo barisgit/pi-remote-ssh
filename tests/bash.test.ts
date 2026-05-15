@@ -6,7 +6,7 @@ import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createRemoteAwareBashTool } from "../src/bash.js";
 import { SessionManager } from "../src/session-manager.js";
-import type { SpawnSsh } from "../src/ssh.js";
+import { runRemoteSh, type SpawnSsh } from "../src/ssh.js";
 
 let stateDir: string;
 let manager: SessionManager;
@@ -55,13 +55,14 @@ describe("slice 2 remote bash", () => {
 		expect(firstCall.args).toContain("-i");
 		expect(firstCall.args).toContain("-p");
 		expect(firstCall.args).toContain("ControlMaster=auto");
-		expect(firstCall.args.slice(-5)).toEqual(["--", "me@example.invalid", "sh", "-lc", "cd '/srv/app' && printf ok"]);
+		expect(firstCall.args.slice(-5, -1)).toEqual(["--", "me@example.invalid", "sh", "-lc"]);
+		expect(remoteShellScript(firstCall.args)).toBe("cd '/srv/app' && printf ok");
 	});
 
 	test("missing remote_cwd resolves remote HOME and writes it back", async () => {
 		await manager.createSession({ path: "home", target: "host" });
 		const spawn = createMockSpawn(({ args }) => {
-			const script = args.at(-1);
+			const script = remoteShellScript(args);
 			if (script === "printf '%s\\n' \"$HOME\"") return { stdout: "/home/tester\n", code: 0 };
 			return { stdout: "cwd ok\n", code: 0 };
 		});
@@ -69,9 +70,55 @@ describe("slice 2 remote bash", () => {
 		const result = await tool.execute("id", { session: "home", command: "pwd" }, undefined, undefined);
 
 		expect(textContent(result)).toContain("cwd ok");
-		expect(spawn.calls.map((call) => call.args.at(-1))).toEqual(["printf '%s\\n' \"$HOME\"", "cd '/home/tester' && pwd"]);
+		expect(spawn.calls.map((call) => remoteShellScript(call.args))).toEqual(["printf '%s\\n' \"$HOME\"", "cd '/home/tester' && pwd"]);
 		const registry = JSON.parse(await readFile(manager.registryPath, "utf8"));
 		expect(registry.home.remote_cwd).toBe("/home/tester");
+	});
+
+	test("reports SSH connection timeouts while resolving remote HOME", async () => {
+		await manager.createSession({ path: "slow-host", target: "slow.example.invalid" });
+		const spawn = createMockSpawn(({ args }) => {
+			const script = remoteShellScript(args);
+			if (script === "printf '%s\\n' \"$HOME\"") return { hang: true, code: null };
+			return { stdout: "should not run\n", code: 0 };
+		});
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+
+		try {
+			await tool.execute("id", { session: "slow-host", command: "pwd", timeout: 1 }, undefined, undefined);
+			throw new Error("expected connection timeout error");
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toContain('Failed to connect to SSH session "slow-host"');
+			expect((error as Error).message).toContain("while resolving remote $HOME");
+			expect((error as Error).message).toContain("SSH connection timed out");
+		}
+		expect(spawn.calls).toHaveLength(1);
+	});
+
+	test("reports unaccepted SSH host keys while resolving remote HOME", async () => {
+		await manager.createSession({ path: "new-host", target: "new.example.invalid" });
+		const spawn = createMockSpawn(({ args }) => {
+			const script = remoteShellScript(args);
+			if (script === "printf '%s\\n' \"$HOME\"") {
+				return {
+					stderr: "The authenticity of host 'new.example.invalid' can't be established.\nAre you sure you want to continue connecting (yes/no/[fingerprint])? Host key verification failed.\n",
+					code: 255,
+				};
+			}
+			return { stdout: "should not run\n", code: 0 };
+		});
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+
+		try {
+			await tool.execute("id", { session: "new-host", command: "pwd" }, undefined, undefined);
+			throw new Error("expected host key error");
+		} catch (error) {
+			expect(error).toBeInstanceOf(Error);
+			expect((error as Error).message).toContain('SSH host key is not trusted for session "new-host"');
+			expect((error as Error).message).toContain("Manually verify and accept the host key");
+		}
+		expect(spawn.calls).toHaveLength(1);
 	});
 
 	test("creates managed ControlPath parent directories before invoking ssh", async () => {
@@ -128,6 +175,112 @@ describe("slice 2 remote bash", () => {
 		expect(spawn.children[0]!.killedWith).toBe("SIGTERM");
 	});
 
+	test("wildcard session runs one aggregated batch across direct child sessions", async () => {
+		await manager.createSessions({
+			sessions: [
+				{ path: "algenbox", target: "root.example.invalid", remote_cwd: "/tmp" },
+				{ path: "algenbox/one", target: "one.example.invalid", remote_cwd: "/tmp" },
+				{ path: "algenbox/two", target: "two.example.invalid", remote_cwd: "/tmp" },
+				{ path: "algenbox/nested/three", target: "three.example.invalid", remote_cwd: "/tmp" },
+				{ path: "other/four", target: "four.example.invalid", remote_cwd: "/tmp" },
+			],
+		});
+		const spawn = createMockSpawn(({ args }) => {
+			const target = sshTargetFromArgs(args);
+			if (target === "two.example.invalid") return { stderr: "bad host\n", code: 255 };
+			return { stdout: `${target}\nok\n`, code: 0 };
+		});
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+		const result = await tool.execute("id", { session: "algenbox/*", command: "hostname; whoami", timeout: 20 }, undefined, undefined);
+
+		expect(spawn.calls).toHaveLength(2);
+		expect(spawn.calls.map((call) => sshTargetFromArgs(call.args)).sort()).toEqual(["one.example.invalid", "two.example.invalid"]);
+		expect(textContent(result)).toContain("Batch bash failed: 1 succeeded, 1 failed across algenbox/*.");
+		expect(textContent(result)).toContain("[algenbox/one] exit 0");
+		expect(textContent(result)).toContain("[algenbox/two] exit 255");
+		expect(textContent(result)).toContain("bad host");
+		expect(result.details).toMatchObject({ batch: true, remote: true, session: "algenbox/*", total: 2, succeeded: 1, failed: 1, exitCode: 1 });
+		expect((result.details as { results?: unknown[] } | undefined)?.results).toHaveLength(2);
+	});
+
+	test("recursive wildcard session runs across all descendant sessions", async () => {
+		await manager.createSessions({
+			sessions: [
+				{ path: "paxia", target: "root.example.invalid", remote_cwd: "/tmp" },
+				{ path: "paxia/algenbox/one", target: "one.example.invalid", remote_cwd: "/tmp" },
+				{ path: "paxia/algenbox/two", target: "two.example.invalid", remote_cwd: "/tmp" },
+				{ path: "paxia/paxense/five", target: "five.example.invalid", remote_cwd: "/tmp" },
+				{ path: "other/four", target: "four.example.invalid", remote_cwd: "/tmp" },
+			],
+		});
+		const spawn = createMockSpawn(({ args }) => ({ stdout: `${sshTargetFromArgs(args)}\n`, code: 0 }));
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+		const result = await tool.execute("id", { session: "paxia/**", command: "hostname" }, undefined, undefined);
+
+		expect(spawn.calls).toHaveLength(3);
+		expect(spawn.calls.map((call) => sshTargetFromArgs(call.args)).sort()).toEqual(["five.example.invalid", "one.example.invalid", "two.example.invalid"]);
+		expect(textContent(result)).toContain("Batch bash succeeded: 3 succeeded across paxia/**.");
+		expect(result.details).toMatchObject({ batch: true, remote: true, session: "paxia/**", total: 3, succeeded: 3, failed: 0, exitCode: 0 });
+	});
+
+	test("double-star wildcard at root runs across all saved sessions", async () => {
+		await manager.createSessions({
+			sessions: [
+				{ path: "root", target: "root.example.invalid", remote_cwd: "/tmp" },
+				{ path: "paxia/algenbox/one", target: "one.example.invalid", remote_cwd: "/tmp" },
+			],
+		});
+		const spawn = createMockSpawn(({ args }) => ({ stdout: `${sshTargetFromArgs(args)}\n`, code: 0 }));
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+		const result = await tool.execute("id", { session: "**", command: "hostname" }, undefined, undefined);
+
+		expect(spawn.calls.map((call) => sshTargetFromArgs(call.args)).sort()).toEqual(["one.example.invalid", "root.example.invalid"]);
+		expect(result.details).toMatchObject({ batch: true, total: 2, succeeded: 2, failed: 0 });
+	});
+
+	test("connect_timeout passes OpenSSH ConnectTimeout separately from command timeout", async () => {
+		await manager.createSession({ path: "slow", target: "slow.example.invalid", remote_cwd: "/tmp" });
+		const spawn = createMockSpawn(() => ({ stdout: "ok\n", code: 0 }));
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+		await tool.execute("id", { session: "slow", command: "true", timeout: 60, connect_timeout: 5 }, undefined, undefined);
+
+		expect(spawn.calls[0]!.args).toContain("ConnectTimeout=5");
+		expect(remoteShellScript(spawn.calls[0]!.args)).toBe("cd '/tmp' && true");
+	});
+
+	test("wildcard session with no matches fails before running ssh", async () => {
+		await manager.createSession({ path: "other/one", target: "one.example.invalid", remote_cwd: "/tmp" });
+		const spawn = createMockSpawn(() => ({ stdout: "unexpected\n", code: 0 }));
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+
+		await expect(tool.execute("id", { session: "missing/*", command: "true" }, undefined, undefined)).rejects.toThrow(/No SSH sessions match/);
+		expect(spawn.calls).toHaveLength(0);
+	});
+
+	test("remote bash streams control-socket output before ssh exits", async () => {
+		await manager.createSession({ path: "stream", target: "host", remote_cwd: "/tmp" });
+		const session = await manager.getSession("stream");
+		const child = new MockChild();
+		let spawned!: () => void;
+		const didSpawn = new Promise<void>((resolve) => { spawned = resolve; });
+		const spawn = ((command: string, args: string[]) => {
+			expect(command).toBe("ssh");
+			expect(args).toContain("ControlMaster=auto");
+			spawned();
+			return child as never;
+		}) as unknown as SpawnSsh;
+		const streamed: string[] = [];
+
+		const run = runRemoteSh(session, "printf streaming", { onData: (data) => streamed.push(data.toString("utf8")) }, spawn);
+		await didSpawn;
+		child.stdout.emit("data", Buffer.from("streaming now\n"));
+		await Promise.resolve();
+
+		expect(streamed).toEqual(["streaming now\n"]);
+		child.emit("close", 0);
+		expect(await run).toEqual({ exitCode: 0, socketAvailable: true });
+	});
+
 	test("ControlMaster failure retries plain ssh and reports socket unavailable without leaking mux output", async () => {
 		await manager.createSession({ path: "fallback", target: "host", remote_cwd: "/tmp" });
 		const plainOutput = `${"y".repeat(70_000)}\nplain ok\n`;
@@ -169,6 +322,20 @@ function textContent(result: { content: Array<{ type: string; text?: string }> }
 
 function controlPathFromArgs(args: string[]): string | undefined {
 	return args.find((arg) => arg.startsWith("ControlPath="))?.slice("ControlPath=".length);
+}
+
+function remoteShellScript(args: string[]): string {
+	const quoted = args.at(-1);
+	if (quoted === undefined) throw new Error("expected remote shell script");
+	return quoted.replace(/^'/, "").replace(/'$/, "").replaceAll("'\\''", "'");
+}
+
+function sshTargetFromArgs(args: string[]): string {
+	const separatorIndex = args.indexOf("--");
+	if (separatorIndex === -1) throw new Error("expected ssh target separator");
+	const target = args[separatorIndex + 1];
+	if (target === undefined) throw new Error("expected ssh target");
+	return target;
 }
 
 function createMockSpawn(respond: (call: MockCall) => MockResponse): SpawnSsh & { calls: MockCall[]; children: MockChild[] } {

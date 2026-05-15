@@ -35,6 +35,14 @@ export interface CreateSessionInput {
 	ssh_args?: string[];
 }
 
+export interface CreateSessionsInput {
+	sessions: CreateSessionInput[];
+}
+
+export interface DeleteSessionsInput {
+	paths: string[];
+}
+
 export interface ListSessionsInput {
 	prefix?: string;
 	depth?: number | null;
@@ -149,28 +157,30 @@ export class SessionManager {
 	}
 
 	async createSession(input: CreateSessionInput): Promise<RuntimeSession> {
-		validateCreateSessionInput(input);
+		const [session] = await this.createSessions({ sessions: [input] });
+		return session!;
+	}
+
+	async createSessions(input: CreateSessionsInput): Promise<RuntimeSession[]> {
+		validateCreateSessionsInput(input);
 		const createdAt = this.now().toISOString();
-		const session: RemoteSshSessionDefinition = {
-			target: input.target,
-			created_at: createdAt,
-			last_used_at: createdAt,
-		};
-		if (input.remote_cwd !== undefined) session.remote_cwd = input.remote_cwd;
-		if (input.port !== undefined) session.port = input.port;
-		if (input.ssh_args !== undefined) session.ssh_args = [...input.ssh_args];
+		const sessions = input.sessions.map((createInput) => ({ path: createInput.path, definition: toSessionDefinition(createInput, createdAt) }));
 
 		await this.withLock(async () => {
 			const registry = await this.readRegistry();
 			await this.cleanupUnreferencedSocketFilesForRegistry(registry);
-			if (registry[input.path] !== undefined) {
-				throw new Error(`SSH session "${input.path}" already exists. Delete it before creating a replacement.`);
+			for (const { path } of sessions) {
+				if (registry[path] !== undefined) {
+					throw new Error(`SSH session "${path}" already exists. Delete it before creating a replacement.`);
+				}
 			}
-			registry[input.path] = session;
+			for (const { path, definition } of sessions) {
+				registry[path] = definition;
+			}
 			await this.writeRegistryAtomic(registry);
 		});
 
-		return this.toRuntimeSession(input.path, session);
+		return sessions.map(({ path, definition }) => this.toRuntimeSession(path, definition));
 	}
 
 	async listSessions(input: ListSessionsInput = {}): Promise<{ entries: Array<ListedSession | ListedNamespace>; view: "compact" | "full" }> {
@@ -232,18 +242,28 @@ export class SessionManager {
 	}
 
 	async deleteSession(path: string): Promise<RuntimeSession> {
-		assertValidSessionPath(path);
-		let deleted: RemoteSshSessionDefinition | undefined;
+		const [deleted] = await this.deleteSessions({ paths: [path] });
+		return deleted!;
+	}
+
+	async deleteSessions(input: DeleteSessionsInput): Promise<RuntimeSession[]> {
+		validateDeleteSessionsInput(input);
+		const deleted: Array<{ path: string; definition: RemoteSshSessionDefinition }> = [];
 		await this.withLock(async () => {
 			const registry = await this.readRegistry();
-			deleted = registry[path];
-			if (deleted === undefined) throw new Error(`SSH session "${path}" does not exist.`);
-			delete registry[path];
+			for (const path of input.paths) {
+				const definition = registry[path];
+				if (definition === undefined) throw new Error(`SSH session "${path}" does not exist.`);
+				deleted.push({ path, definition });
+			}
+			for (const path of input.paths) {
+				delete registry[path];
+			}
 			await this.writeRegistryAtomic(registry);
 		});
-		const runtime = this.toRuntimeSession(path, deleted!);
-		await this.removeManagedSocket(runtime.socket_path);
-		return runtime;
+		const runtimes = deleted.map(({ path, definition }) => this.toRuntimeSession(path, definition));
+		await Promise.all(runtimes.map((runtime) => this.removeManagedSocket(runtime.socket_path)));
+		return runtimes;
 	}
 
 	toRuntimeSession(path: string, definition: RemoteSshSessionDefinition): RuntimeSession {
@@ -400,6 +420,38 @@ function validateCreateSessionInput(input: CreateSessionInput): void {
 	assertValidRemoteCwd(input.remote_cwd);
 	assertValidPort(input.port);
 	assertValidSshArgs(input.ssh_args, input.port);
+}
+
+function validateCreateSessionsInput(input: CreateSessionsInput): void {
+	if (!Array.isArray(input.sessions) || input.sessions.length === 0) throw new Error("sessions must be a non-empty array.");
+	const seenPaths = new Set<string>();
+	for (const session of input.sessions) {
+		validateCreateSessionInput(session);
+		if (seenPaths.has(session.path)) throw new Error(`Duplicate SSH session path "${session.path}" in batch.`);
+		seenPaths.add(session.path);
+	}
+}
+
+function validateDeleteSessionsInput(input: DeleteSessionsInput): void {
+	if (!Array.isArray(input.paths) || input.paths.length === 0) throw new Error("paths must be a non-empty array.");
+	const seenPaths = new Set<string>();
+	for (const path of input.paths) {
+		assertValidSessionPath(path);
+		if (seenPaths.has(path)) throw new Error(`Duplicate SSH session path "${path}" in batch.`);
+		seenPaths.add(path);
+	}
+}
+
+function toSessionDefinition(input: CreateSessionInput, createdAt: string): RemoteSshSessionDefinition {
+	const session: RemoteSshSessionDefinition = {
+		target: input.target,
+		created_at: createdAt,
+		last_used_at: createdAt,
+	};
+	if (input.remote_cwd !== undefined) session.remote_cwd = input.remote_cwd;
+	if (input.port !== undefined) session.port = input.port;
+	if (input.ssh_args !== undefined) session.ssh_args = [...input.ssh_args];
+	return session;
 }
 
 function normalizeRegistry(parsed: unknown): SessionRegistry {

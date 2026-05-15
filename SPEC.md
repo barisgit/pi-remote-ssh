@@ -72,15 +72,26 @@ remote_ssh_list: {
 }
 
 remote_ssh_create_session: {
-  path: string,          // e.g. "home-vps" or "rpi-lab/pi-03"
-  target: string,        // user@host or SSH alias
-  remote_cwd?: string,       // defaults to remote $HOME on first connect
+  // single create
+  path?: string,          // e.g. "home-vps" or "rpi-lab/pi-03"
+  target?: string,        // user@host or SSH alias
+  remote_cwd?: string,    // defaults to remote $HOME on first connect
   port?: number,
-  ssh_args?: string[]    // optional OpenSSH client args, no target/shell syntax
+  ssh_args?: string[],    // optional OpenSSH client args, no target/shell syntax
+
+  // batch create; mutually exclusive with top-level session fields
+  sessions?: Array<{
+    path: string,
+    target: string,
+    remote_cwd?: string,
+    port?: number,
+    ssh_args?: string[]
+  }>
 }
 
 remote_ssh_delete_session: {
-  path: string
+  path?: string,      // single delete
+  paths?: string[]    // batch delete; mutually exclusive with path
 }
 ```
 
@@ -89,7 +100,8 @@ Wrapped/overridden built-in tools:
 ```ts
 bash: {
   command: string,
-  timeout?: number,
+  timeout?: number,          // overall command timeout
+  connect_timeout?: number,  // OpenSSH ConnectTimeout for remote sessions
   session?: string
 }
 
@@ -182,6 +194,7 @@ Required behavior:
 - if omitted, resolve remote `$HOME` on first connect and write the resolved value back to the session registry
 - derive a managed socket path under the extension state directory, mirroring the session path when possible and hashing when path length risks Unix socket limits
 - clean up stale files under the extension-owned socket directory after confirming no control master is alive
+- when `sessions` is provided, create the full batch in one atomic registry update; reject duplicate paths or existing paths without partial writes
 - save the session definition to the registry
 - create or reuse the SSH control master socket lazily on first use
 - do not verify SSH connectivity during `create_session`; v1 saves definitions even when hosts are offline or unreachable
@@ -218,8 +231,9 @@ Delete a saved session definition.
 
 Required behavior:
 
-- remove the named session path from the registry
-- always close/delete the managed SSH control socket for that session if present
+- remove the named session path, or all `paths` in a batch, from the registry in one atomic update
+- reject duplicate batch paths or missing paths without partial registry writes
+- always close/delete the managed SSH control socket for each deleted session if present
 
 ## 7. Path behavior
 
@@ -295,15 +309,23 @@ Mirror Pi `edit` when `session` is provided:
 
 ## 9. Bash behavior
 
-`bash` executes shell commands remotely when `session` is provided. Without `session`, it delegates to Pi's normal local bash.
+`bash` executes shell commands remotely when an exact `session` is provided. Without `session`, it delegates to Pi's normal local bash. When `session` is `*`, `**`, or ends in `/*` or `/**`, bash expands the pattern locally and runs one aggregated batch across matching sessions.
 
 Default behavior:
 
 - run commands through deterministic `sh -lc` with a safely quoted `cd "$remote_cwd" && <command>` wrapper
 - return stdout/stderr and exit code
-- support `timeout` in seconds
-- stream/truncate output like Pi bash where practical
+- support `timeout` in seconds for the overall command
+- support remote-only `connect_timeout` in seconds by passing OpenSSH `ConnectTimeout`; this bounds SSH handshakes separately from command runtime
+- stream/truncate output like Pi bash where practical for exact sessions
 - if output is too large, save full output to a local temp file and report the path; normal Pi `read` can inspect it
+- for `session: "prefix/*"`, expand direct child sessions under `prefix`; do not include nested descendants or the prefix session itself
+- for `session: "prefix/**"`, expand all descendant sessions under `prefix`; do not include the prefix session itself
+- for `session: "*"`, expand direct root sessions
+- for `session: "**"`, expand all saved sessions
+- batch bash returns one tool call result with grouped per-session output and `details.batch === true`
+- batch bash succeeds only if every matched session succeeds; partial failures are included in the grouped result and set aggregate `details.exitCode` to `1`
+- batch bash uses bounded concurrency to avoid SSH storms
 
 Tmux is not part of v1. Future async/job support may use tmux internally if a dedicated job API is added.
 
