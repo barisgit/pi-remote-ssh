@@ -54,7 +54,11 @@ const listTool = defineTool({
 	description:
 		"List saved Pi Remote SSH sessions from the local registry. This never connects to or probes remote hosts.",
 	promptSnippet: "List saved Remote SSH sessions without probing the network",
-	promptGuidelines: ["Use remote_ssh_list to discover session paths; listing sessions never connects to remote hosts."],
+	promptGuidelines: [
+		"Use remote_ssh_list to discover session paths and their managed ControlPath socket paths; listing sessions never connects to remote hosts.",
+		"For direct OpenSSH commands such as scp/sftp/ssh outside Pi tools, prefer the listed socket_path with -o ControlPath=<socket_path> -o ControlMaster=auto instead of opening an unrelated connection.",
+		"If socket_status is absent, prewarm the managed socket first with bash({ session: \"<session>\", command: \"echo alive\" })."
+	],
 	parameters: Type.Object({
 		prefix: Type.Optional(Type.String({ description: "Optional full session path prefix to list below" })),
 		depth: Type.Optional(Type.Number({ description: "Maximum path levels below prefix; omit/null for unlimited" })),
@@ -138,13 +142,13 @@ function renderDeletedSessions(sessions: Array<{ path: string }>): string {
 	return [`Deleted ${sessions.length} SSH sessions:`, ...sessions.map((session) => `- ${session.path}`)].join("\n");
 }
 
-function renderList(entries: Array<{ path: string; type?: "namespace"; target?: string; remote_cwd?: string; socket_status?: string }>, view: "compact" | "full"): string {
+function renderList(entries: Array<{ path: string; type?: "namespace"; target?: string; remote_cwd?: string; socket_path?: string; socket_status?: string }>, view: "compact" | "full"): string {
 	if (entries.length === 0) return "No SSH sessions found.";
 	return entries
 		.map((entry) => {
 			if (entry.type === "namespace") return `${entry.path}/`;
 			if (view === "compact") return `${entry.path} -> ${entry.target} (${entry.socket_status ?? "socket unknown"})`;
-			return `${entry.path}\n  target: ${entry.target}\n  remote_cwd: ${entry.remote_cwd ?? "<resolve $HOME on first connect>"}\n  socket: ${entry.socket_status ?? "unknown"}`;
+			return `${entry.path}\n  target: ${entry.target}\n  remote_cwd: ${entry.remote_cwd ?? "<resolve $HOME on first connect>"}\n  socket_status: ${entry.socket_status ?? "unknown"}\n  socket_path: ${entry.socket_path ?? "unknown"}`;
 		})
 		.join("\n");
 }
