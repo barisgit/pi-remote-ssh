@@ -3,7 +3,7 @@ import {
 	keyHint,
 	type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
-import { Container, Spacer, Text, type Component } from "@mariozechner/pi-tui";
+import { Container, Spacer, Text, visibleWidth, type Component } from "@mariozechner/pi-tui";
 import { isAbsolute, relative } from "node:path";
 
 type ThemeLike = {
@@ -42,6 +42,10 @@ const ORIGINAL_UPDATE_DISPLAY_KEY = Symbol.for("pi.toolOutputVisibility.original
 const COLLAPSED_PREVIEW_HEAD_LINES = 12;
 const COLLAPSED_PREVIEW_TAIL_LINES = 12;
 const COLLAPSED_PREVIEW_PARTIAL_LINES = 25;
+const DEFAULT_COMPACT_WIDTH = 80;
+const MIN_COMPACT_DESCRIPTION_WIDTH = 16;
+const STATUS_PREFIX_WIDTH = 20;
+const SESSION_META_MAX_WIDTH = 36;
 const HIDDEN_XML_TAGS = ["dcp-id", "dcp-owner"];
 
 export function installToolOutputVisibility() {
@@ -61,14 +65,15 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 				return tool.renderCall?.(args, theme, context) ?? ((context.lastComponent as Text | undefined) ?? new Text("", 0, 0));
 			}
 
-			const text = (context.lastComponent as Text | undefined) ?? new Text("", 0, 0);
-			const isRunning = context.executionStarted && context.isPartial;
-			const showExpandHint = context.argsComplete && !context.isPartial && !context.expanded;
-			let line = compactCallText(tool.name, (args ?? {}) as Record<string, unknown>, theme as ThemeLike, isRunning);
-
-			if (showExpandHint) line += ` ${expandHintText(theme as ThemeLike)}`;
-			text.setText(line);
-			return text;
+			const compact = context.lastComponent instanceof DynamicCompactCallText ? context.lastComponent : new DynamicCompactCallText();
+			compact.setState({
+				name: tool.name,
+				args: (args ?? {}) as Record<string, unknown>,
+				theme: theme as ThemeLike,
+				isRunning: context.executionStarted && context.isPartial,
+				showExpandHint: context.argsComplete && !context.isPartial && !context.expanded,
+			});
+			return compact;
 		},
 		renderResult(result: any, options: any, theme: any, context: any) {
 			const sanitizedResult = sanitizeToolResultPayload(result);
@@ -96,7 +101,36 @@ function createCompactBlockSpacer() {
 }
 
 function truncate(value: string, max = 48) {
-	return value.length <= max ? value : `${value.slice(0, max - 1)}…`;
+	const width = Math.max(1, max);
+	return value.length <= width ? value : `${value.slice(0, width - 1)}…`;
+}
+
+type DynamicCompactCallState = {
+	name: string;
+	args: Record<string, unknown>;
+	theme: ThemeLike;
+	isRunning: boolean;
+	showExpandHint: boolean;
+};
+
+class DynamicCompactCallText implements Component {
+	private state: DynamicCompactCallState | undefined;
+
+	setState(state: DynamicCompactCallState) {
+		this.state = state;
+	}
+
+	render(width: number): string[] {
+		if (!this.state) return [];
+
+		const { name, args, theme, isRunning, showExpandHint } = this.state;
+		const expandHint = showExpandHint ? ` ${expandHintText(theme)}` : "";
+		const callWidth = Math.max(1, width - visibleWidth(expandHint));
+		const line = compactCallText(name, args, theme, isRunning, callWidth);
+		return [`${line}${expandHint}`];
+	}
+
+	invalidate() {}
 }
 
 function pluralize(count: number, singular: string, plural = `${singular}s`) {
@@ -279,12 +313,12 @@ function patchDynamicExpandedShell() {
 	state[DYNAMIC_EXPANDED_SHELL_PATCH_KEY] = DYNAMIC_EXPANDED_SHELL_PATCH_VERSION;
 }
 
-function formatPath(value: unknown) {
+function formatPath(value: unknown, max = 48) {
 	if (typeof value !== "string" || value.length === 0) return ".";
-	if (!isAbsolute(value)) return truncate(value);
+	if (!isAbsolute(value)) return truncate(value, max);
 
 	const rel = relative(process.cwd(), value);
-	return truncate(rel && !rel.startsWith("..") ? rel || "." : value);
+	return truncate(rel && !rel.startsWith("..") ? rel || "." : value, max);
 }
 
 function formatStatusIcon(status: Status, theme: ThemeLike, spinnerFrame?: number) {
@@ -327,6 +361,11 @@ function renderStatusLine(options: StatusLineOptions, theme: ThemeLike) {
 	return line;
 }
 
+function compactDescriptionBudget(width: number, meta: string[] = []) {
+	const metaWidth = meta.filter(Boolean).reduce((sum, value) => sum + visibleWidth(value) + 3, 0);
+	return Math.max(MIN_COMPACT_DESCRIPTION_WIDTH, width - metaWidth - STATUS_PREFIX_WIDTH);
+}
+
 function formatLineRange(args: Record<string, unknown>) {
 	const offset = typeof args.offset === "number" ? args.offset : undefined;
 	const limit = typeof args.limit === "number" ? args.limit : undefined;
@@ -338,37 +377,56 @@ function formatLineRange(args: Record<string, unknown>) {
 }
 
 function sessionMeta(args: Record<string, unknown>) {
-	return typeof args.session === "string" && args.session.length > 0 ? `session: ${truncate(args.session, 36)}` : "";
+	return typeof args.session === "string" && args.session.length > 0 ? `session: ${truncate(args.session, SESSION_META_MAX_WIDTH)}` : "";
 }
 
-function compactCallText(name: string, args: Record<string, unknown>, theme: ThemeLike, isRunning = false) {
+function compactCallText(name: string, args: Record<string, unknown>, theme: ThemeLike, isRunning = false, width = DEFAULT_COMPACT_WIDTH) {
 	const icon = isRunning ? "running" : "pending";
 	const session = sessionMeta(args);
 
 	switch (name) {
-		case "read": {
-			const path = formatPath(args.file_path ?? args.path);
-			const range = formatLineRange(args);
-			return renderStatusLine({ icon, title: "Read", description: path, meta: [range ?? "", session] }, theme);
-		}
-		case "grep": {
-			const pattern = typeof args.pattern === "string" && args.pattern ? truncate(args.pattern, 36) : "…";
-			const meta = [typeof args.path === "string" && args.path ? formatPath(args.path) : "", typeof args.glob === "string" && args.glob ? truncate(args.glob, 20) : "", typeof args.limit === "number" ? String(args.limit) : "", session].filter(Boolean);
-			return renderStatusLine({ icon, title: "Grep", description: JSON.stringify(pattern), meta }, theme);
-		}
-		case "find": {
-			const pattern = typeof args.pattern === "string" && args.pattern ? truncate(args.pattern, 40) : "…";
-			const meta = [typeof args.limit === "number" ? String(args.limit) : "", session].filter(Boolean);
-			return renderStatusLine({ icon, title: "Find", description: pattern, meta }, theme);
-		}
-		case "ls": {
-			const path = formatPath(args.path);
-			const limit = typeof args.limit === "number" ? String(args.limit) : undefined;
-			return renderStatusLine({ icon, title: "Ls", description: path, meta: [limit ?? "", session] }, theme);
-		}
+		case "read":
+			return renderReadCall(args, theme, icon, session, width);
+		case "grep":
+			return renderGrepCall(args, theme, icon, session, width);
+		case "find":
+			return renderFindCall(args, theme, icon, session, width);
+		case "ls":
+			return renderLsCall(args, theme, icon, session, width);
 		default:
 			return renderStatusLine({ icon, title: theme.bold(name) }, theme);
 	}
+}
+
+function renderReadCall(args: Record<string, unknown>, theme: ThemeLike, icon: Status, session: string, width: number) {
+	const range = formatLineRange(args);
+	const meta = [range ?? "", session];
+	const path = formatPath(args.file_path ?? args.path, compactDescriptionBudget(width, meta));
+	return renderStatusLine({ icon, title: "Read", description: path, meta }, theme);
+}
+
+function renderGrepCall(args: Record<string, unknown>, theme: ThemeLike, icon: Status, session: string, width: number) {
+	const pathBudget = Math.floor(compactDescriptionBudget(width) / 2);
+	const path = typeof args.path === "string" && args.path ? formatPath(args.path, pathBudget) : "";
+	const glob = typeof args.glob === "string" && args.glob ? truncate(args.glob, 20) : "";
+	const limit = typeof args.limit === "number" ? String(args.limit) : "";
+	const meta = [path, glob, limit, session].filter(Boolean);
+	const pattern = typeof args.pattern === "string" && args.pattern ? truncate(args.pattern, compactDescriptionBudget(width, meta)) : "…";
+	return renderStatusLine({ icon, title: "Grep", description: JSON.stringify(pattern), meta }, theme);
+}
+
+function renderFindCall(args: Record<string, unknown>, theme: ThemeLike, icon: Status, session: string, width: number) {
+	const limit = typeof args.limit === "number" ? String(args.limit) : "";
+	const meta = [limit, session].filter(Boolean);
+	const pattern = typeof args.pattern === "string" && args.pattern ? truncate(args.pattern, compactDescriptionBudget(width, meta)) : "…";
+	return renderStatusLine({ icon, title: "Find", description: pattern, meta }, theme);
+}
+
+function renderLsCall(args: Record<string, unknown>, theme: ThemeLike, icon: Status, session: string, width: number) {
+	const limit = typeof args.limit === "number" ? String(args.limit) : undefined;
+	const meta = [limit ?? "", session];
+	const path = formatPath(args.path, compactDescriptionBudget(width, meta));
+	return renderStatusLine({ icon, title: "Ls", description: path, meta }, theme);
 }
 
 function expandHintText(theme: ThemeLike) {
