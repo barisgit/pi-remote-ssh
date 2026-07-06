@@ -3,7 +3,7 @@ import {
 	keyHint,
 	type ToolDefinition,
 } from "@mariozechner/pi-coding-agent";
-import { Container, Spacer, Text, visibleWidth, type Component } from "@mariozechner/pi-tui";
+import { Container, Spacer, Text, truncateToWidth, visibleWidth, type Component } from "@mariozechner/pi-tui";
 import { isAbsolute, relative } from "node:path";
 
 type ThemeLike = {
@@ -126,8 +126,8 @@ class DynamicCompactCallText implements Component {
 		const { name, args, theme, isRunning, showExpandHint } = this.state;
 		const expandHint = showExpandHint ? ` ${expandHintText(theme)}` : "";
 		const callWidth = Math.max(1, width - visibleWidth(expandHint));
-		const line = compactCallText(name, args, theme, isRunning, callWidth);
-		return [`${line}${expandHint}`];
+		const line = truncateToWidth(compactCallText(name, args, theme, isRunning, callWidth), callWidth, "");
+		return [truncateToWidth(`${line}${expandHint}`, width, "")];
 	}
 
 	invalidate() {}
