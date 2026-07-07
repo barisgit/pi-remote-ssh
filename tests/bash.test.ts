@@ -139,8 +139,8 @@ describe("slice 2 remote bash", () => {
 			await tool.execute("id", { session: Array.from({ length: 20 }, (_, index) => `segment-${index}`).join("/"), command: "true" }, undefined, undefined);
 
 			expect(spawn.calls).toHaveLength(2);
-			expect(controlPathFromArgs(spawn.calls[0]!.args)).toContain(join("lab", "pi-03", "control.sock"));
-			expect(controlPathFromArgs(spawn.calls[1]!.args)).toContain(join("hashed", ""));
+			expect(controlPathFromArgs(spawn.calls[0]!.args)).toContain(join("lab", "pi-03", "c"));
+			expect(controlPathFromArgs(spawn.calls[1]!.args)).toContain("/prs/");
 		} finally {
 			await rm(shortStateDir, { recursive: true, force: true });
 		}

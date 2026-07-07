@@ -89,6 +89,7 @@ export class RegistryLockError extends Error {
 
 export interface SessionManagerOptions {
 	stateDir: string;
+	socketDir?: string;
 	lockWaitMs?: number;
 	staleLockMs?: number;
 	now?: () => Date;
@@ -103,7 +104,11 @@ interface LockMetadata {
 
 const DEFAULT_LOCK_WAIT_MS = 30_000;
 const DEFAULT_STALE_LOCK_MS = 5 * 60_000;
-const SOCKET_PATH_LIMIT = 100;
+// macOS/BSD only allow 104 bytes for Unix-domain socket paths (Linux is 108).
+// OpenSSH can temporarily bind ControlPath with a random suffix like
+// ".XXXXXXXXXXXXXX", so the configured ControlPath itself must be shorter than
+// the kernel limit.
+const CONTROL_PATH_SAFE_LIMIT = 86;
 
 export class SessionManager {
 	readonly stateDir: string;
@@ -120,7 +125,7 @@ export class SessionManager {
 		this.stateDir = options.stateDir;
 		this.registryPath = join(this.stateDir, "sessions.json");
 		this.lockPath = join(this.stateDir, "sessions.lock");
-		this.socketsDir = join(this.stateDir, "sockets");
+		this.socketsDir = options.socketDir ?? join(this.stateDir, "sockets");
 		this.logsDir = join(this.stateDir, "logs");
 		this.lockWaitMs = options.lockWaitMs ?? DEFAULT_LOCK_WAIT_MS;
 		this.staleLockMs = options.staleLockMs ?? DEFAULT_STALE_LOCK_MS;
@@ -272,10 +277,17 @@ export class SessionManager {
 
 	deriveSocketPath(sessionPath: string): string {
 		assertValidSessionPath(sessionPath);
-		const mirrored = join(this.socketsDir, ...sessionPath.split("/"), "control.sock");
-		if (Buffer.byteLength(mirrored, "utf8") <= SOCKET_PATH_LIMIT) return mirrored;
+		const mirrored = join(this.socketsDir, ...sessionPath.split("/"), "c");
+		if (byteLength(mirrored) <= CONTROL_PATH_SAFE_LIMIT) return mirrored;
 		const digest = createHash("sha256").update(sessionPath).digest("hex").slice(0, 32);
-		return join(this.socketsDir, "hashed", `${digest}.sock`);
+		const hashed = join(this.externalSocketsDir(), `${digest}.s`);
+		if (byteLength(hashed) <= CONTROL_PATH_SAFE_LIMIT) return hashed;
+		throw new Error(`Remote SSH state directory is too long for a safe OpenSSH ControlPath: ${this.socketsDir}`);
+	}
+
+	private externalSocketsDir(): string {
+		const stateDigest = createHash("sha256").update(this.stateDir).digest("hex").slice(0, 16);
+		return join("/tmp", "prs", stateDigest);
 	}
 
 	async cleanupUnreferencedSocketFiles(): Promise<void> {
@@ -288,6 +300,9 @@ export class SessionManager {
 	private async cleanupUnreferencedSocketFilesForRegistry(registry: SessionRegistry): Promise<void> {
 		const liveSocketPaths = new Set(Object.keys(registry).map((path) => this.deriveSocketPath(path)));
 		await this.walkSocketFiles(this.socketsDir, async (filePath) => {
+			if (!liveSocketPaths.has(filePath)) await rm(filePath, { force: true });
+		});
+		await this.walkSocketFiles(this.externalSocketsDir(), async (filePath) => {
 			if (!liveSocketPaths.has(filePath)) await rm(filePath, { force: true });
 		});
 	}
@@ -394,7 +409,8 @@ export class SessionManager {
 
 	private async removeManagedSocket(socketPath: string): Promise<void> {
 		await rm(socketPath, { force: true });
-		await pruneEmptyParents(dirname(socketPath), this.socketsDir);
+		const stopAt = socketPath.startsWith(this.socketsDir) ? this.socketsDir : this.externalSocketsDir();
+		await pruneEmptyParents(dirname(socketPath), stopAt);
 	}
 
 	private async walkSocketFiles(root: string, visit: (filePath: string) => Promise<void>): Promise<void> {
@@ -482,6 +498,10 @@ function normalizeRegistry(parsed: unknown): SessionRegistry {
 		if (entry.ssh_args !== undefined) result[path].ssh_args = [...entry.ssh_args];
 	}
 	return result;
+}
+
+function byteLength(value: string): number {
+	return new TextEncoder().encode(value).byteLength;
 }
 
 async function fileExists(path: string): Promise<boolean> {

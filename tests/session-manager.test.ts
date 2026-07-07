@@ -27,8 +27,7 @@ describe("slice 1 session registry and lifecycle", () => {
 		});
 
 		expect(created.path).toBe("rpi-lab/pi-03");
-		expect(created.socket_path).toContain("sockets");
-		expect(created.socket_path.endsWith("control.sock") || created.socket_path.endsWith(".sock")).toBe(true);
+		expect(created.socket_path.endsWith("/c") || created.socket_path.endsWith(".s")).toBe(true);
 
 		const compact = await manager.listSessions();
 		expect(compact.entries).toHaveLength(1);
@@ -172,6 +171,21 @@ describe("slice 1 session registry and lifecycle", () => {
 		await expect(manager.listSessions()).rejects.toBeInstanceOf(RegistryParseError);
 		await expect(manager.createSession({ path: "new", target: "host" })).rejects.toBeInstanceOf(RegistryParseError);
 		expect(await readFile(manager.registryPath, "utf8")).toBe("{ definitely not json");
+	});
+
+	test("long mirrored socket paths use a short hashed ControlPath", async () => {
+		const shortStateDir = await mkdtemp(join("/tmp", "pirs-long-socket-test-"));
+		try {
+			const longSocketDir = join(shortStateDir, "this", "socket", "root", "is", "intentionally", "too", "long", "for", "mirrored", "control", "paths");
+			const shortStateManager = new SessionManager({ stateDir: shortStateDir, socketDir: longSocketDir, lockWaitMs: 500, staleLockMs: 60_000 });
+			const created = await shortStateManager.createSession({ path: "personal-servers/context-overflow-server", target: "host" });
+
+			expect(created.socket_path).toContain("/prs/");
+			expect(new TextEncoder().encode(created.socket_path).byteLength).toBeLessThanOrEqual(86);
+			expect(created.socket_path.endsWith(".s")).toBe(true);
+		} finally {
+			await rm(shortStateDir, { recursive: true, force: true });
+		}
 	});
 
 	test("managed socket paths are derived and delete removes only extension-owned socket", async () => {

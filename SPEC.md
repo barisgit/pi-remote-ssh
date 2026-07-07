@@ -192,7 +192,7 @@ Required behavior:
 - validate `path` as the stable identifier; do not accept separate `name`
 - if provided, validate `remote_cwd` is absolute on the remote host; `/` is allowed and expected for device-style sessions
 - if omitted, resolve remote `$HOME` on first connect and write the resolved value back to the session registry
-- derive a managed socket path under the extension state directory, mirroring the session path when possible and hashing when path length risks Unix socket limits
+- derive a managed ControlPath under the configured socket directory (default `/tmp/prs/<state-hash>`), mirroring the session path when short enough and hashing when path length risks Unix socket limits
 - clean up stale files under the extension-owned socket directory after confirming no control master is alive
 - when `sessions` is provided, create the full batch in one atomic registry update; reject duplicate paths or existing paths without partial writes
 - save the session definition to the registry
@@ -431,11 +431,14 @@ Runtime/debug state layout:
 <pi-config-dir>/remote-ssh/   # defaults to ~/.pi/remote-ssh/
   sessions.json          # persistent flat registry, chmod 0600
   sessions.lock          # registry write lock
-  sockets/               # managed ControlPath files, derived from session path
   logs/                  # debug logs such as apply-patch-debug.jsonl
+
+<socket-dir>/             # defaults to /tmp/prs/<state-hash>, override with PI_REMOTE_SSH_SOCKET_DIR
+  <session/path>/c        # mirrored ControlPath when short enough
+  <session-hash>.s        # hashed ControlPath fallback for very long paths
 ```
 
-Remote-ssh runtime/user state should not live under `~/.pi/agent/`; that directory is primarily Pi agent configuration. State should follow Pi's config directory when possible, defaulting to `~/.pi/remote-ssh/`. The registry should not store derived socket paths.
+Remote-ssh persistent user state should not live under `~/.pi/agent/`; that directory is primarily Pi agent configuration. Persistent state should follow Pi's config directory when possible, defaulting to `~/.pi/remote-ssh/`. Runtime-only OpenSSH ControlPath sockets should live in a short socket directory (default `/tmp/prs/<state-hash>`) so human-readable session paths do not exceed Unix socket path limits. The registry should not store derived socket paths.
 
 Registry rules:
 

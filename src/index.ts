@@ -1,6 +1,6 @@
 import { Type } from "@mariozechner/pi-ai";
 import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { getRemoteSshStateDir } from "./config.js";
+import { getRemoteSshSocketDir, getRemoteSshStateDir } from "./config.js";
 import { createRemoteAwareBashTool } from "./bash.js";
 import { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "./remote-files.js";
 import { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "./remote-search.js";
@@ -8,7 +8,8 @@ import { SessionManager, type CreateSessionInput, type ListSessionsInput } from 
 import { installToolOutputVisibility, withCompactHiddenResult } from "./tool-output-visibility.js";
 
 function createSessionManager(): SessionManager {
-	return new SessionManager({ stateDir: getRemoteSshStateDir() });
+	const stateDir = getRemoteSshStateDir();
+	return new SessionManager({ stateDir, socketDir: getRemoteSshSocketDir(stateDir) });
 }
 
 const createSessionTool = defineTool({
@@ -156,6 +157,6 @@ function renderList(entries: Array<{ path: string; type?: "namespace"; target?: 
 export { createRemoteAwareBashTool } from "./bash.js";
 export { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "./remote-files.js";
 export { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "./remote-search.js";
-export { getRemoteSshStateDir } from "./config.js";
+export { getRemoteSshSocketDir, getRemoteSshStateDir } from "./config.js";
 export { SessionManager } from "./session-manager.js";
 export type { CreateSessionInput, ListedSession, RemoteSshSessionDefinition, RuntimeSession, SessionRegistry } from "./session-manager.js";
