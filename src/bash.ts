@@ -19,6 +19,10 @@ export interface RemoteBashDetails extends BashToolDetails {
 	results?: BatchBashSessionResult[];
 }
 
+function withSelectedRoute(session: RuntimeSession, selected: RuntimeSession): RuntimeSession {
+	return { ...session, target: selected.target, socket_path: selected.socket_path };
+}
+
 interface BatchBashSessionResult {
 	session: string;
 	target: string;
@@ -208,7 +212,7 @@ class RemoteBashOperations implements BashOperations {
 		const result = await this.run(script, withoutUndefined(options));
 		this.socketAvailable = this.socketAvailable && result.socketAvailable;
 		if (result.exitCode === 0) {
-			this.currentSession = await this.manager.updateSessionAfterUse(this.currentSession.path, {});
+			this.currentSession = withSelectedRoute(await this.manager.updateSessionAfterUse(this.currentSession.path, {}), result.session);
 		}
 		return { exitCode: result.exitCode };
 	}
@@ -228,10 +232,10 @@ class RemoteBashOperations implements BashOperations {
 			throw createHomeResolutionThrownError(this.currentSession.path, this.currentSession.target, error);
 		});
 		this.socketAvailable = this.socketAvailable && result.socketAvailable;
-		if (result.exitCode !== 0) throw createHomeResolutionError(this.currentSession.path, this.currentSession.target, Buffer.concat(chunks).toString("utf8"));
+		if (result.exitCode !== 0) throw createHomeResolutionError(this.currentSession.path, result.target, Buffer.concat(chunks).toString("utf8"));
 		const home = Buffer.concat(chunks).toString("utf8").trimEnd().split("\n").at(-1)?.trim();
 		if (!home?.startsWith("/")) throw new Error(`Resolved remote $HOME for SSH session "${this.currentSession.path}" is not an absolute path.`);
-		this.currentSession = await this.manager.updateSessionAfterUse(this.currentSession.path, { remote_cwd: home });
+		this.currentSession = withSelectedRoute(await this.manager.updateSessionAfterUse(this.currentSession.path, { remote_cwd: home }), result.session);
 		return home;
 	}
 

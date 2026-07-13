@@ -12,6 +12,10 @@ function createSessionManager(): SessionManager {
 	return new SessionManager({ stateDir, socketDir: getRemoteSshSocketDir(stateDir) });
 }
 
+function renderTargets(session: CreateSessionInput): string {
+	return session.targets?.join(" -> ") ?? session.target ?? "unknown";
+}
+
 const createSessionTool = defineTool({
 	name: "remote_ssh_create_session",
 	label: "Create SSH Session",
@@ -21,7 +25,8 @@ const createSessionTool = defineTool({
 	promptGuidelines: ["Use remote_ssh_create_session to save a remote SSH target before calling wrapped tools with session."],
 	parameters: Type.Object({
 		path: Type.Optional(Type.String({ description: "Slash-separated session path, e.g. home-vps or rpi-lab/pi-03. Use for single create." })),
-		target: Type.Optional(Type.String({ description: "OpenSSH target token such as user@host or a configured SSH alias. Use for single create." })),
+		targets: Type.Optional(Type.Array(Type.String(), { description: "Ordered OpenSSH targets such as user@host, Tailscale names, or public IPs. Each is tried in order on connection/socket failure." })),
+		target: Type.Optional(Type.String({ description: "Legacy single OpenSSH target. Prefer targets[] for new sessions." })),
 		remote_cwd: Type.Optional(Type.String({ description: "Absolute remote working directory. If omitted, future remote use resolves $HOME." })),
 		port: Type.Optional(Type.Number({ description: "SSH port from 1 to 65535" })),
 		ssh_args: Type.Optional(Type.Array(Type.String(), { description: "Additional OpenSSH argv tokens; no shell syntax, target, or control socket options." })),
@@ -29,7 +34,8 @@ const createSessionTool = defineTool({
 			Type.Array(
 				Type.Object({
 					path: Type.String({ description: "Slash-separated session path, e.g. home-vps or rpi-lab/pi-03" }),
-					target: Type.String({ description: "OpenSSH target token such as user@host or a configured SSH alias" }),
+					targets: Type.Optional(Type.Array(Type.String(), { description: "Ordered OpenSSH targets tried in order on connection/socket failure" })),
+					target: Type.Optional(Type.String({ description: "Legacy single OpenSSH target. Prefer targets[]." })),
 					remote_cwd: Type.Optional(Type.String({ description: "Absolute remote working directory. If omitted, future remote use resolves $HOME." })),
 					port: Type.Optional(Type.Number({ description: "SSH port from 1 to 65535" })),
 					ssh_args: Type.Optional(Type.Array(Type.String(), { description: "Additional OpenSSH argv tokens; no shell syntax, target, or control socket options." })),
@@ -114,8 +120,8 @@ export default function (pi: ExtensionAPI) {
 
 function getCreateSessionInputs(params: Partial<CreateSessionInput> & { sessions?: CreateSessionInput[] }): CreateSessionInput[] {
 	if (params.sessions !== undefined) {
-		if (params.path !== undefined || params.target !== undefined || params.remote_cwd !== undefined || params.port !== undefined || params.ssh_args !== undefined) {
-			throw new Error("Use either sessions[] or top-level path/target fields, not both.");
+		if (params.path !== undefined || params.target !== undefined || params.targets !== undefined || params.remote_cwd !== undefined || params.port !== undefined || params.ssh_args !== undefined) {
+			throw new Error("Use either sessions[] or top-level path/targets fields, not both.");
 		}
 		return params.sessions;
 	}
@@ -133,8 +139,8 @@ function getDeleteSessionPaths(params: { path?: string; paths?: string[] }): str
 
 function renderCreatedSessions(sessions: CreateSessionInput[]): string {
 	const [first] = sessions;
-	if (sessions.length === 1 && first !== undefined) return `Created SSH session ${first.path} (${first.target}).`;
-	return [`Created ${sessions.length} SSH sessions:`, ...sessions.map((session) => `- ${session.path} (${session.target})`)].join("\n");
+	if (sessions.length === 1 && first !== undefined) return `Created SSH session ${first.path} (${renderTargets(first)}).`;
+	return [`Created ${sessions.length} SSH sessions:`, ...sessions.map((session) => `- ${session.path} (${renderTargets(session)})`)].join("\n");
 }
 
 function renderDeletedSessions(sessions: Array<{ path: string }>): string {
@@ -143,13 +149,14 @@ function renderDeletedSessions(sessions: Array<{ path: string }>): string {
 	return [`Deleted ${sessions.length} SSH sessions:`, ...sessions.map((session) => `- ${session.path}`)].join("\n");
 }
 
-function renderList(entries: Array<{ path: string; type?: "namespace"; target?: string; remote_cwd?: string; socket_path?: string; socket_status?: string }>, view: "compact" | "full"): string {
+function renderList(entries: Array<{ path: string; type?: "namespace"; target?: string; targets?: string[]; remote_cwd?: string; socket_path?: string; socket_status?: string }>, view: "compact" | "full"): string {
 	if (entries.length === 0) return "No SSH sessions found.";
 	return entries
 		.map((entry) => {
 			if (entry.type === "namespace") return `${entry.path}/`;
-			if (view === "compact") return `${entry.path} -> ${entry.target} (${entry.socket_status ?? "socket unknown"})`;
-			return `${entry.path}\n  target: ${entry.target}\n  remote_cwd: ${entry.remote_cwd ?? "<resolve $HOME on first connect>"}\n  socket_status: ${entry.socket_status ?? "unknown"}\n  socket_path: ${entry.socket_path ?? "unknown"}`;
+			const targets = entry.targets?.join(" -> ") ?? entry.target ?? "unknown";
+			if (view === "compact") return `${entry.path} -> ${targets} (${entry.socket_status ?? "socket unknown"})`;
+			return `${entry.path}\n  targets: ${targets}\n  remote_cwd: ${entry.remote_cwd ?? "<resolve $HOME on first connect>"}\n  socket_status: ${entry.socket_status ?? "unknown"}\n  socket_path: ${entry.socket_path ?? "unknown"}`;
 		})
 		.join("\n");
 }

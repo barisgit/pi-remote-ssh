@@ -9,7 +9,7 @@ Execution of a normal Pi tool against a named SSH session by passing `session`.
 _Avoid_: remote-only tool, mounted mode
 
 **Session**:
-A saved SSH session definition with a target host, optional remote cwd, and derived runtime state such as a managed socket.
+A saved SSH session definition with ordered SSH targets, optional remote cwd, and derived runtime state such as managed sockets.
 _Avoid_: active connection, host only, environment
 
 **Local Mode**:
@@ -45,12 +45,12 @@ _Avoid_: remote file tool, overloaded session action
 - **Remote Mode** requires exactly one **Session** per tool call.
 - A **Session Registry** stores reusable **Session** definitions, not guaranteed-live connections.
 - A **Session Path** identifies exactly one saved **Session** and must be used in full by wrapped tool calls.
-- A **Managed Socket** belongs to exactly one **Session Path** and is recreated lazily by the extension on first use.
-- **SSH Args** customize how a **Session** connects but must not contain target hosts or shell syntax; target stays a separate field.
+- A **Managed Socket** belongs to exactly one **Session Path** and SSH target, and is recreated lazily by the extension on first use.
+- **SSH Args** customize how a **Session** connects but must not contain target hosts or shell syntax; ordered targets stay separate fields.
 - `port` remains a separate common-case field; conflicting port settings between `port` and **SSH Args** are rejected.
 - The **Session Registry** is a flat map keyed by full **Session Path**, not a nested hierarchy.
 - Runtime/user state lives under the Pi config dir's `remote-ssh/` state directory, defaulting to `~/.pi/remote-ssh/`; nothing remote-ssh-specific belongs under `~/.pi/agent/` unless it is actual Pi extension configuration.
-- The **Session Registry** does not store derived socket paths; sockets are derived from **Session Paths**.
+- The **Session Registry** does not store derived socket paths; sockets are derived from **Session Paths** and targets.
 - `sessions.json` should be written with `0600` permissions using a lock directory/file and atomic temp-file rename.
 - Secrets in `ssh_args` are discouraged but not blocked; once the agent knows a secret, policy must treat it as already exposed.
 - `create_session` saves definitions even when the host is offline or unreachable.

@@ -167,7 +167,7 @@ A session is a saved definition plus derived runtime state:
 ```ts
 interface RemoteSshSessionDefinition {
   path: string;
-  target: string;
+  targets: string[]; // ordered OpenSSH targets
   remoteCwd?: string;
   port?: number;
   sshArgs?: string[];
@@ -176,7 +176,7 @@ interface RemoteSshSessionDefinition {
 }
 
 interface RuntimeSession extends RemoteSshSessionDefinition {
-  socketPath: string; // derived/managed, never persisted
+  socketPath: string; // first route's derived/managed socket, never persisted
 } 
 ```
 
@@ -190,6 +190,9 @@ Required behavior:
 - reject leading `/`, `..`, empty segments, `~`, backslash, and control characters
 - fail on duplicate `path`; replacement/update requires explicit delete then create unless future spec adds an update tool
 - validate `path` as the stable identifier; do not accept separate `name`
+- require a non-empty ordered `targets` array; each target is an OpenSSH target token such as `user@host`, a Tailscale name, or a public IP
+- try targets in order when SSH reports a connection setup failure or a broken managed control socket; use a distinct managed socket per target
+- do not replay a command on another target once it has produced output, because a disconnect at that point has an uncertain remote outcome
 - if provided, validate `remote_cwd` is absolute on the remote host; `/` is allowed and expected for device-style sessions
 - if omitted, resolve remote `$HOME` on first connect and write the resolved value back to the session registry
 - derive a managed ControlPath under the configured socket directory (default `/tmp/prs/<state-hash>`), mirroring the session path when short enough and hashing when path length risks Unix socket limits

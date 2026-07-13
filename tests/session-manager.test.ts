@@ -93,7 +93,7 @@ describe("slice 1 session registry and lifecycle", () => {
 		await expect(manager.createSession({ path: "home-vps", target: "second.example.invalid", remote_cwd: "/home/second" })).rejects.toThrow(/already exists/);
 
 		const registry = JSON.parse(await readFile(manager.registryPath, "utf8"));
-		expect(registry["home-vps"].target).toBe("first.example.invalid");
+		expect(registry["home-vps"].targets).toEqual(["first.example.invalid"]);
 		expect(registry["home-vps"].remote_cwd).toBe("/home/first");
 	});
 

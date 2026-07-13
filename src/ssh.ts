@@ -16,6 +16,8 @@ export interface SshRunOptions {
 export interface SshRunResult {
 	exitCode: number | null;
 	socketAvailable: boolean;
+	target: string;
+	session: RuntimeSession;
 }
 
 export function createHomeResolutionError(sessionPath: string, target: string, output: string): Error {
@@ -72,18 +74,27 @@ export function shellQuote(value: string): string {
 const defaultSpawn: SpawnSsh = (command, args, options) => nodeSpawn(command, args, options) as unknown as ChildProcessWithoutNullStreams;
 
 export async function runRemoteSh(session: RuntimeSession, script: string, options: SshRunOptions = {}, spawnSsh: SpawnSsh = defaultSpawn): Promise<SshRunResult> {
-	await mkdir(dirname(session.socket_path), { recursive: true });
-	const controlArgs = buildSshArgs(session, true, script, options.connectTimeout);
-	const controlled = await runSshProcess(controlArgs, options, spawnSsh, { streamOutput: true, streamStderrAfterStdout: true });
-	if (!shouldRetryWithoutControl(controlled) || controlled.streamedChunks.length > 0) {
-		for (const chunk of controlled.bufferedChunks) options.onData?.(chunk);
-		for (const chunk of controlled.bufferedStderrChunks) options.onStderr?.(chunk);
-		return { exitCode: controlled.exitCode, socketAvailable: true };
+	for (const route of session.routes) {
+		const routeSession = { ...session, target: route.target, socket_path: route.socket_path };
+		const result = await runSingleRoute(routeSession, script, options, spawnSsh);
+		if (isRouteFailure(result.raw) && route !== session.routes.at(-1)) continue;
+		deliverBufferedOutput(result.raw, options);
+		return { exitCode: result.raw.exitCode, socketAvailable: result.socketAvailable, target: route.target, session: routeSession };
 	}
+	throw new Error(`SSH session "${session.path}" has no targets.`);
+}
 
-	const plainArgs = buildSshArgs(session, false, script, options.connectTimeout);
-	const plain = await runSshProcess(plainArgs, options, spawnSsh, { streamOutput: true });
-	return { exitCode: plain.exitCode, socketAvailable: false };
+async function runSingleRoute(session: RuntimeSession, script: string, options: SshRunOptions, spawnSsh: SpawnSsh): Promise<{ raw: RawSshResult; socketAvailable: boolean }> {
+	await mkdir(dirname(session.socket_path), { recursive: true });
+	const controlled = await runSshProcess(buildSshArgs(session, true, script, options.connectTimeout), options, spawnSsh, { streamOutput: true, streamStderrAfterStdout: true });
+	if (!shouldRetryWithoutControl(controlled) || controlled.streamedChunks.length > 0) return { raw: controlled, socketAvailable: true };
+	const plain = await runSshProcess(buildSshArgs(session, false, script, options.connectTimeout), options, spawnSsh, { streamOutput: true, streamStderrAfterStdout: true });
+	return { raw: plain, socketAvailable: false };
+}
+
+function deliverBufferedOutput(result: RawSshResult, options: SshRunOptions): void {
+	for (const chunk of result.bufferedChunks) options.onData?.(chunk);
+	for (const chunk of result.bufferedStderrChunks) options.onStderr?.(chunk);
 }
 
 function buildSshArgs(session: RuntimeSession, useControlSocket: boolean, script: string, connectTimeout: number | undefined): string[] {
@@ -188,5 +199,10 @@ function runSshProcess(args: string[], options: SshRunOptions, spawnSsh: SpawnSs
 
 function shouldRetryWithoutControl(result: RawSshResult): boolean {
 	if (result.exitCode !== 255) return false;
-	return /ControlMaster|ControlPath|control socket|mux|Bad configuration option/i.test(result.output);
+	return /ControlMaster|ControlPath|mux\/control socket unavailable|Bad configuration option/i.test(result.output);
+}
+
+function isRouteFailure(result: RawSshResult): boolean {
+	if (result.exitCode !== 255 || result.stdoutChunks.length > 0 || result.streamedChunks.length > 0) return false;
+	return isConnectionFailureOutput(result.output) || /mux_client_request_session: read from master failed|master is dead|Broken pipe|Connection reset by peer/i.test(result.output);
 }

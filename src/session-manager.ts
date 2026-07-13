@@ -12,7 +12,7 @@ import {
 } from "./path-safety.js";
 
 export interface RemoteSshSessionDefinition {
-	target: string;
+	targets: string[];
 	remote_cwd?: string;
 	port?: number;
 	ssh_args?: string[];
@@ -20,8 +20,37 @@ export interface RemoteSshSessionDefinition {
 	last_used_at: string;
 }
 
+function validateTargets(input: Pick<CreateSessionInput, "target" | "targets">): void {
+	targetsFromInput(input);
+}
+
+function targetsFromInput(input: { target?: unknown; targets?: unknown }): string[] {
+	if (input.targets !== undefined) {
+		if (input.target !== undefined) throw new Error("Use targets[] instead of target; do not provide both.");
+		if (!Array.isArray(input.targets) || input.targets.length === 0) throw new Error("targets must be a non-empty array.");
+		const targets = [...input.targets];
+		for (const target of targets) {
+			if (typeof target !== "string") throw new Error("targets must contain only SSH target strings.");
+			assertValidTarget(target);
+		}
+		if (new Set(targets).size !== targets.length) throw new Error("targets must not contain duplicates.");
+		return targets;
+	}
+	if (input.target === undefined) throw new Error("targets is required.");
+	if (typeof input.target !== "string") throw new Error("target must be an SSH target string.");
+	assertValidTarget(input.target);
+	return [input.target];
+}
+
 export interface RuntimeSession extends RemoteSshSessionDefinition {
 	path: string;
+	target: string;
+	socket_path: string;
+	routes: RuntimeSessionRoute[];
+}
+
+export interface RuntimeSessionRoute {
+	target: string;
 	socket_path: string;
 }
 
@@ -29,7 +58,8 @@ export type SessionRegistry = Record<string, RemoteSshSessionDefinition>;
 
 export interface CreateSessionInput {
 	path: string;
-	target: string;
+	target?: string;
+	targets?: string[];
 	remote_cwd?: string;
 	port?: number;
 	ssh_args?: string[];
@@ -52,6 +82,7 @@ export interface ListSessionsInput {
 export interface ListedSession {
 	path: string;
 	target: string;
+	targets: string[];
 	remote_cwd?: string;
 	port?: number;
 	ssh_args?: string[];
@@ -267,12 +298,14 @@ export class SessionManager {
 			await this.writeRegistryAtomic(registry);
 		});
 		const runtimes = deleted.map(({ path, definition }) => this.toRuntimeSession(path, definition));
-		await Promise.all(runtimes.map((runtime) => this.removeManagedSocket(runtime.socket_path)));
+		await Promise.all(runtimes.flatMap((runtime) => runtime.routes.map((route) => this.removeManagedSocket(route.socket_path))));
 		return runtimes;
 	}
 
 	toRuntimeSession(path: string, definition: RemoteSshSessionDefinition): RuntimeSession {
-		return { path, socket_path: this.deriveSocketPath(path), ...definition };
+		const routes = definition.targets.map((target, index) => ({ target, socket_path: this.deriveRouteSocketPath(path, target, index) }));
+		const primary = routes[0]!;
+		return { path, ...definition, target: primary.target, socket_path: primary.socket_path, routes };
 	}
 
 	deriveSocketPath(sessionPath: string): string {
@@ -283,6 +316,12 @@ export class SessionManager {
 		const hashed = join(this.externalSocketsDir(), `${digest}.s`);
 		if (byteLength(hashed) <= CONTROL_PATH_SAFE_LIMIT) return hashed;
 		throw new Error(`Remote SSH state directory is too long for a safe OpenSSH ControlPath: ${this.socketsDir}`);
+	}
+
+	private deriveRouteSocketPath(sessionPath: string, target: string, index: number): string {
+		if (index === 0) return this.deriveSocketPath(sessionPath);
+		const digest = createHash("sha256").update(`${sessionPath}\0${target}`).digest("hex").slice(0, 32);
+		return join(this.externalSocketsDir(), `${digest}.r`);
 	}
 
 	private externalSocketsDir(): string {
@@ -298,7 +337,7 @@ export class SessionManager {
 	}
 
 	private async cleanupUnreferencedSocketFilesForRegistry(registry: SessionRegistry): Promise<void> {
-		const liveSocketPaths = new Set(Object.keys(registry).map((path) => this.deriveSocketPath(path)));
+		const liveSocketPaths = new Set(Object.entries(registry).flatMap(([path, definition]) => this.toRuntimeSession(path, definition).routes.map((route) => route.socket_path)));
 		await this.walkSocketFiles(this.socketsDir, async (filePath) => {
 			if (!liveSocketPaths.has(filePath)) await rm(filePath, { force: true });
 		});
@@ -393,17 +432,18 @@ export class SessionManager {
 	}
 
 	private async toListedSession(path: string, definition: RemoteSshSessionDefinition): Promise<ListedSession> {
-		const socketPath = this.deriveSocketPath(path);
+		const session = this.toRuntimeSession(path, definition);
 		return {
 			path,
-			target: definition.target,
+			target: session.target,
+			targets: [...definition.targets],
 			...(definition.remote_cwd !== undefined ? { remote_cwd: definition.remote_cwd } : {}),
 			...(definition.port !== undefined ? { port: definition.port } : {}),
 			...(definition.ssh_args !== undefined ? { ssh_args: [...definition.ssh_args] } : {}),
 			created_at: definition.created_at,
 			last_used_at: definition.last_used_at,
-			socket_path: socketPath,
-			socket_status: (await fileExists(socketPath)) ? "present" : "absent",
+			socket_path: session.socket_path,
+			socket_status: (await fileExists(session.socket_path)) ? "present" : "absent",
 		};
 	}
 
@@ -432,7 +472,7 @@ export class SessionManager {
 
 function validateCreateSessionInput(input: CreateSessionInput): void {
 	assertValidSessionPath(input.path);
-	assertValidTarget(input.target);
+	validateTargets(input);
 	assertValidRemoteCwd(input.remote_cwd);
 	assertValidPort(input.port);
 	assertValidSshArgs(input.ssh_args, input.port);
@@ -460,7 +500,7 @@ function validateDeleteSessionsInput(input: DeleteSessionsInput): void {
 
 function toSessionDefinition(input: CreateSessionInput, createdAt: string): RemoteSshSessionDefinition {
 	const session: RemoteSshSessionDefinition = {
-		target: input.target,
+		targets: targetsFromInput(input),
 		created_at: createdAt,
 		last_used_at: createdAt,
 	};
@@ -480,16 +520,15 @@ function normalizeRegistry(parsed: unknown): SessionRegistry {
 		if (value === null || typeof value !== "object" || Array.isArray(value)) {
 			throw new Error(`registry entry ${path} must be an object`);
 		}
-		const entry = value as Partial<RemoteSshSessionDefinition>;
-		if (typeof entry.target !== "string") throw new Error(`registry entry ${path} is missing target`);
-		assertValidTarget(entry.target);
+		const entry = value as Partial<RemoteSshSessionDefinition> & { target?: unknown };
+		const targets = targetsFromInput(entry);
 		assertValidRemoteCwd(entry.remote_cwd);
 		assertValidPort(entry.port);
 		assertValidSshArgs(entry.ssh_args, entry.port);
 		const createdAt = typeof entry.created_at === "string" ? entry.created_at : new Date(0).toISOString();
 		const lastUsedAt = typeof entry.last_used_at === "string" ? entry.last_used_at : createdAt;
 		result[path] = {
-			target: entry.target,
+			targets,
 			created_at: createdAt,
 			last_used_at: lastUsedAt,
 		};

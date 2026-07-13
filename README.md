@@ -12,6 +12,7 @@ Implemented:
 - Flat registry at `<pi-config-dir>/remote-ssh/sessions.json` (default `~/.pi/remote-ssh/sessions.json`)
 - Registry locking with `sessions.lock`, owner metadata, atomic writes, and `0600` registry permissions
 - Managed ControlPath derivation under a short socket directory (default `/tmp/prs/<state-hash>`), exposed by `remote_ssh_list` as `socket_path` for direct OpenSSH reuse
+- Ordered SSH targets per session, with automatic transport and broken-control-socket failover
 - Remote `bash({ session, command })` via SSH with extension-managed ControlMaster/ControlPath and plain SSH fallback
 - Remote `read({ session, path })`, `write({ session, path, content })`, and `edit({ session, path, edits })` via SSH and remote `python3` helpers
 - Remote `ls({ session, path })`, `grep({ session, pattern, path })`, and `find({ session, pattern, path })` via SSH and remote `python3` helpers
@@ -49,4 +50,4 @@ Managed socket notes:
 - If `socket_status` is `absent`, agents should prewarm the managed socket with a simple remote command such as `bash({ session: "<session>", command: "echo alive" })` before direct `scp`/`ssh` reuse.
 - Socket paths mirror session paths as `<socket-dir>/<session/path>/c` when short enough; very long paths fall back to `<socket-dir>/<session-hash>.s`.
 
-`remote_ssh_create_session` accepts either a single top-level `{ path, target, ... }` session or `sessions: [...]` for an atomic batch create. `remote_ssh_delete_session` accepts either `path` or `paths: [...]` for an atomic batch delete. No additional batch tool names are registered.
+`remote_ssh_create_session` accepts either a single top-level `{ path, targets: ["server.tailnet.ts.net", "203.0.113.10"], ... }` session or `sessions: [...]` for an atomic batch create. Targets are tried in listed order for connection setup failures and broken managed control sockets; each target has its own managed socket. Commands that have begun producing output are not replayed on another target, avoiding duplicate mutations after an uncertain disconnect. The legacy single `target` field is accepted for existing registries and callers. `remote_ssh_delete_session` accepts either `path` or `paths: [...]` for an atomic batch delete. No additional batch tool names are registered.

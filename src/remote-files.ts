@@ -24,6 +24,10 @@ export interface CreateRemoteFileToolOptions {
 	localEditTool?: ReturnType<typeof createEditToolDefinition>;
 }
 
+function selectRoute(session: RuntimeSession, selected: RuntimeSession): RuntimeSession {
+	return { ...session, target: selected.target, socket_path: selected.socket_path };
+}
+
 interface ReadParams {
 	path: string;
 	offset?: number;
@@ -168,6 +172,7 @@ export class RemoteContext {
 		const result = this.spawnSsh === undefined
 			? await runRemoteSh(this.session, script, runOptions)
 			: await runRemoteSh(this.session, script, runOptions, this.spawnSsh);
+		this.session = selectRoute(this.session, result.session);
 		const stdout = Buffer.concat(stdoutChunks).toString("utf8");
 		const stderr = Buffer.concat(stderrChunks).toString("utf8");
 		if (result.exitCode !== 0) throw new Error(stderr.trim() || stdout.trim() || `Remote python3 helper failed with exit code ${result.exitCode}.`);
@@ -180,7 +185,7 @@ export class RemoteContext {
 	}
 
 	async markUsed(): Promise<void> {
-		this.session = await this.manager.updateSessionAfterUse(this.session.path, {});
+		this.session = selectRoute(await this.manager.updateSessionAfterUse(this.session.path, {}), this.session);
 	}
 }
 
@@ -237,10 +242,10 @@ export async function createRemoteContext(manager: SessionManager, sessionPath: 
 			.catch((error: unknown) => {
 				throw createHomeResolutionThrownError(session.path, session.target, error);
 			});
-		if (result.exitCode !== 0) throw createHomeResolutionError(session.path, session.target, Buffer.concat([...stdoutChunks, ...stderrChunks]).toString("utf8"));
+		if (result.exitCode !== 0) throw createHomeResolutionError(session.path, result.target, Buffer.concat([...stdoutChunks, ...stderrChunks]).toString("utf8"));
 		const home = Buffer.concat(stdoutChunks).toString("utf8").trimEnd().split("\n").at(-1)?.trim();
 		if (!home?.startsWith("/")) throw new Error(`Resolved remote $HOME for SSH session "${session.path}" is not an absolute path.`);
-		session = await manager.updateSessionAfterUse(session.path, { remote_cwd: home });
+		session = selectRoute(await manager.updateSessionAfterUse(session.path, { remote_cwd: home }), result.session);
 	}
 	const remoteCwd = session.remote_cwd;
 	if (remoteCwd === undefined) throw new Error(`SSH session "${session.path}" is missing remote_cwd.`);

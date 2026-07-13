@@ -278,7 +278,7 @@ describe("slice 2 remote bash", () => {
 
 		expect(streamed).toEqual(["streaming now\n"]);
 		child.emit("close", 0);
-		expect(await run).toEqual({ exitCode: 0, socketAvailable: true });
+		expect(await run).toMatchObject({ exitCode: 0, socketAvailable: true });
 	});
 
 	test("ControlMaster failure retries plain ssh and reports socket unavailable without leaking mux output", async () => {
@@ -301,6 +301,41 @@ describe("slice 2 remote bash", () => {
 		const fullOutput = await readFile(fullOutputPath, "utf8");
 		expect(fullOutput).toBe(plainOutput);
 		expect(fullOutput).not.toContain("mux/control socket unavailable");
+	});
+
+	test("uses the next ordered target when an existing control socket breaks", async () => {
+		await manager.createSession({
+			path: "multi-route",
+			targets: ["box.tailnet.ts.net", "203.0.113.10"],
+			remote_cwd: "/tmp",
+		});
+		const spawn = createMockSpawn(({ args }) => {
+			if (sshTargetFromArgs(args) === "box.tailnet.ts.net") {
+				return { stderr: "mux_client_request_session: read from master failed: Broken pipe\n", code: 255 };
+			}
+			return { stdout: "public route ok\n", code: 0 };
+		});
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+
+		const result = await tool.execute("id", { session: "multi-route", command: "true" }, undefined, undefined);
+
+		expect(textContent(result)).toContain("public route ok");
+		expect(textContent(result)).not.toContain("read from master failed");
+		expect(result.details).toMatchObject({ target: "203.0.113.10", socket: "available" });
+		expect(spawn.calls.map((call) => sshTargetFromArgs(call.args))).toEqual(["box.tailnet.ts.net", "203.0.113.10"]);
+		expect(controlPathFromArgs(spawn.calls[0]!.args)).not.toBe(controlPathFromArgs(spawn.calls[1]!.args));
+	});
+
+	test("does not replay a command on another target after it produced output", async () => {
+		await manager.createSession({ path: "uncertain", targets: ["box.tailnet.ts.net", "203.0.113.10"], remote_cwd: "/tmp" });
+		const spawn = createMockSpawn(({ args }) => {
+			if (sshTargetFromArgs(args) === "box.tailnet.ts.net") return { stdout: "started mutation\n", stderr: "Connection reset by peer\n", code: 255 };
+			return { stdout: "must not run\n", code: 0 };
+		});
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+
+		await expect(tool.execute("id", { session: "uncertain", command: "dangerous-command" }, undefined, undefined)).rejects.toThrow("Command exited with code 255");
+		expect(spawn.calls).toHaveLength(1);
 	});
 });
 

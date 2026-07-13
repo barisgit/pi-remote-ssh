@@ -1,0 +1,33 @@
+{
+  "metadata": {
+    "version": "1.0.0",
+    "last_run": "2026-07-13T15:36:44.115341Z",
+    "root": "/Users/blaz/Programming_local/Projects/pi-extensions/pi-remote-ssh",
+    "include_patterns": [
+      "src/**/*.ts"
+    ],
+    "exclude_patterns": [
+      "**/*.test.ts",
+      "dist/**",
+      "node_modules/**"
+    ],
+    "exceptions": []
+  },
+  "file_hashes": {
+    "src/bash.ts": "1cfce55478cf0e7e0b96f26a244dc752",
+    "src/config.ts": "a0767f3637f073d23ee110d833dd9f3f",
+    "src/index.ts": "07868479a0cc1030924ce3732f0eff93",
+    "src/path-safety.ts": "00634256f269736957eddd01fa7f83b4",
+    "src/remote-files.ts": "eb7796dda2e416024d607104063b59f4",
+    "src/remote-render.ts": "867e6201f936bd793c7769285f402ced",
+    "src/remote-search.ts": "5deb46cc41521ed4c298699a3cbf7346",
+    "src/session-manager.ts": "13737a8109064dde3b506dcc835955de",
+    "src/ssh.ts": "b731b04129e19f71c40e3932f20904c3",
+    "src/tool-output-visibility.ts": "758d86fdff0c7d90a6ec4e36407c4055",
+    "src/write-enhancements.ts": "5e80b02d328da66de66c975cd2fcd31c"
+  },
+  "folder_hashes": {
+    "src": "b538ae81653ea300d072d7d910bd4c6a",
+    ".": ""
+  }
+}
