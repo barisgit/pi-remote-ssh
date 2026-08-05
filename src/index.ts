@@ -6,6 +6,7 @@ import { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAware
 import { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "./remote-search.js";
 import { SessionManager, type CreateSessionInput, type ListSessionsInput } from "./session-manager.js";
 import { installToolOutputVisibility, withCompactHiddenResult } from "./tool-output-visibility.js";
+import { renderRemoteSshCall, renderRemoteSshResult } from "./tool-render.js";
 
 function createSessionManager(): SessionManager {
 	const stateDir = getRemoteSshStateDir();
@@ -19,6 +20,8 @@ function renderTargets(session: CreateSessionInput): string {
 const createSessionTool = defineTool({
 	name: "remote_ssh_create_session",
 	label: "Create SSH Session",
+	renderCall: (args, theme) => renderRemoteSshCall("create", args, theme),
+	renderResult: (result, options, theme, context) => renderRemoteSshResult("create", result, options, theme, context),
 	description:
 		"Create a saved Pi Remote SSH session definition. This only writes the local registry; it never connects to or probes the remote host.",
 	promptSnippet: "Create a saved Remote SSH session without connecting to the host",
@@ -58,6 +61,8 @@ const createSessionTool = defineTool({
 const listTool = defineTool({
 	name: "remote_ssh_list",
 	label: "List SSH Sessions",
+	renderCall: (args, theme) => renderRemoteSshCall("list", args, theme),
+	renderResult: (result, options, theme, context) => renderRemoteSshResult("list", result, options, theme, context),
 	description:
 		"List saved Pi Remote SSH sessions from the local registry. This never connects to or probes remote hosts.",
 	promptSnippet: "List saved Remote SSH sessions without probing the network",
@@ -86,6 +91,8 @@ const listTool = defineTool({
 const deleteSessionTool = defineTool({
 	name: "remote_ssh_delete_session",
 	label: "Delete SSH Session",
+	renderCall: (args, theme) => renderRemoteSshCall("delete", args, theme),
+	renderResult: (result, options, theme, context) => renderRemoteSshResult("delete", result, options, theme, context),
 	description: "Delete a saved Pi Remote SSH session and remove its extension-managed socket file if present.",
 	promptSnippet: "Delete a saved Remote SSH session and its managed socket",
 	promptGuidelines: ["Use remote_ssh_delete_session only when the saved SSH session path should be removed from the local registry."],

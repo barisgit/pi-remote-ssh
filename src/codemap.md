@@ -12,11 +12,13 @@ Pi extension that adds named SSH sessions and remote-aware tool variants. Lets a
 
 **Remote-aware tool wrappers.** Each wrapped tool (bash, read, write, edit, ls, grep, find) follows the same pattern: if `params.session` is undefined, delegate to the local tool unchanged; otherwise resolve the session, build a `RemoteContext`, and execute via SSH. The wrappers extend the base tool's parameter schema with an optional `session` field.
 
+**Lifecycle-tool rendering.** The create, list, and delete session tools in `index.ts` use Pi's standard padded shell and delegate call/result presentation to `tool-render.ts`. Calls show the operation and relevant paths/filter; partial results show `working`; errors show a single truncated line. List results remain hierarchical: collapsed mode reveals leaves from small groups within a global line limit, while expanded mode shows every leaf with target and socket metadata. Create/delete use compact mutation summaries and expanded raw details.
+
 **Control socket management.** SSH uses OpenSSH multiplexing (`ControlMaster=auto`, `ControlPersist=60s`). On exit code 255 with control-socket errors, it retries without the control socket. Each route gets a distinct socket path so failover between targets uses separate connections.
 
 ## Flow
 
-1. **Create session** — `remote_ssh_create_session` validates input (path, targets[], port, ssh_args) and writes to registry. No network probe.
+1. **Create/list/delete lifecycle** — `index.ts` validates lifecycle inputs, mutates or reads the local registry, and returns raw text plus structured details; `tool-render.ts` formats the custom TUI call/result views without changing execution data. No lifecycle operation probes the network.
 2. **Execute tool** — Wrapped tool checks for `session` param. If present:
    - `SessionManager.getSession()` loads definition, builds `RuntimeSession` with routes
    - `createRemoteContext()` resolves remote $HOME if needed, establishing the first working route
@@ -27,7 +29,8 @@ Pi extension that adds named SSH sessions and remote-aware tool variants. Lets a
 
 ## Files
 
-- `index.ts` — Extension entry point. Registers 10 tools (3 session CRUD + 7 remote-aware wrappers). Installs tool-output-visibility patches.
+- `index.ts` — Extension entry point. Registers 10 tools (3 session CRUD + 7 remote-aware wrappers), wires custom rendering for the three session lifecycle tools, and installs tool-output-visibility patches.
+- `tool-render.ts` — Custom TUI rendering for create/list/delete calls and results: compact operation labels, mutation summaries, bounded collapsed trees, metadata-rich expanded trees, partial `working` state, and truncated error state.
 - `session-manager.ts` — `SessionManager` class: CRUD, registry I/O, locking, socket path derivation, route building. Defines all session types (`RemoteSshSessionDefinition`, `RuntimeSession`, `RuntimeSessionRoute`).
 - `ssh.ts` — SSH process spawning, multi-route failover (`runRemoteSh`), control socket retry logic, output buffering/streaming, connection-failure detection, shell quoting.
 - `bash.ts` — `createRemoteAwareBashTool`: wraps Pi's bash tool. Handles remote $HOME resolution, batch session patterns, connect timeout. `RemoteBashOperations` implements the `BashOperations` interface over SSH.
@@ -42,6 +45,6 @@ Pi extension that adds named SSH sessions and remote-aware tool variants. Lets a
 ## Integration
 
 - **Pi extension API** — `index.ts` exports a default function that receives `ExtensionAPI` and registers tools.
-- **Peer dependencies** — `@mariozechner/pi-coding-agent` (tool definitions, `defineTool`, base read/write/edit/find/grep/ls/bash tools) and `@mariozechner/pi-ai` (Type schema).
+- **Peer dependencies** — `@mariozechner/pi-coding-agent` (tool definitions, `defineTool`, base read/write/edit/find/grep/ls/bash tools) and `@mariozechner/pi-ai` (Type schema). Custom lifecycle views return `Text` nodes from `@mariozechner/pi-tui`.
 - **OpenSSH** — All remote execution shells out to `ssh`; no libssh or JS SSH library. Relies on system SSH config, keys, agent forwarding.
 - **State layout** — `~/.pi/remote-ssh/sessions.json` (registry), `sessions.lock` (advisory lock), `sockets/` (mirrored socket paths), `logs/` (reserved).
