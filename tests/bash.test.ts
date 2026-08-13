@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
-import { mkdtemp, readFile, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { createRemoteAwareBashTool } from "../src/bash.js";
@@ -326,6 +326,38 @@ describe("slice 2 remote bash", () => {
 		expect(controlPathFromArgs(spawn.calls[0]!.args)).not.toBe(controlPathFromArgs(spawn.calls[1]!.args));
 	});
 
+	test("removes a stale managed control socket before failing over", async () => {
+		await manager.createSession({ path: "stale", targets: ["box.tailnet.ts.net", "203.0.113.10"], remote_cwd: "/tmp" });
+		const session = await manager.getSession("stale");
+		await mkdir(dirname(session.socket_path), { recursive: true });
+		await writeFile(session.socket_path, "stale socket marker");
+		const spawn = createMockSpawn(({ args }) => {
+			if (sshTargetFromArgs(args) === "box.tailnet.ts.net") return { stderr: `Control socket connect(${session.socket_path}): No such file or directory\n`, code: 255 };
+			return { stdout: "public route ok\n", code: 0 };
+		});
+
+		const result = await runRemoteSh(session, "true", {}, spawn);
+
+		expect(result.target).toBe("203.0.113.10");
+		expect(await Bun.file(session.socket_path).exists()).toBe(false);
+	});
+
+	test("sets bounded SSH keepalives on controlled and plain connections", async () => {
+		await manager.createSession({ path: "keepalive", target: "host", remote_cwd: "/tmp" });
+		const spawn = createMockSpawn(({ args }) => {
+			if (args.includes("ControlMaster=auto")) return { stderr: "mux/control socket unavailable\n", code: 255 };
+			return { stdout: "ok\n", code: 0 };
+		});
+
+		await runRemoteSh(await manager.getSession("keepalive"), "true", {}, spawn);
+
+		expect(spawn.calls).toHaveLength(2);
+		for (const call of spawn.calls) {
+			expect(call.args).toContain("ServerAliveInterval=15");
+			expect(call.args).toContain("ServerAliveCountMax=3");
+		}
+	});
+
 	test("does not replay a command on another target after it produced output", async () => {
 		await manager.createSession({ path: "uncertain", targets: ["box.tailnet.ts.net", "203.0.113.10"], remote_cwd: "/tmp" });
 		const spawn = createMockSpawn(({ args }) => {
@@ -335,6 +367,17 @@ describe("slice 2 remote bash", () => {
 		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
 
 		await expect(tool.execute("id", { session: "uncertain", command: "dangerous-command" }, undefined, undefined)).rejects.toThrow("Command exited with code 255");
+		expect(spawn.calls).toHaveLength(1);
+	});
+
+	test("does not fail over an arbitrary remote command timeout", async () => {
+		await manager.createSession({ path: "timed-out", targets: ["box.tailnet.ts.net", "203.0.113.10"], remote_cwd: "/tmp" });
+		const spawn = createMockSpawn(({ args }) => {
+			if (sshTargetFromArgs(args) === "box.tailnet.ts.net") return { hang: true, code: null };
+			return { stdout: "must not run\n", code: 0 };
+		});
+
+		await expect(runRemoteSh(await manager.getSession("timed-out"), "sleep 999", { timeout: 0.01 }, spawn)).rejects.toThrow("timeout:0.01");
 		expect(spawn.calls).toHaveLength(1);
 	});
 });

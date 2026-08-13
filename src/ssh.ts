@@ -1,6 +1,6 @@
 import { spawn as nodeSpawn } from "node:child_process";
 import type { ChildProcessWithoutNullStreams } from "node:child_process";
-import { mkdir } from "node:fs/promises";
+import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import type { RuntimeSession } from "./session-manager.js";
 
@@ -57,7 +57,8 @@ function isConnectionFailureOutput(output: string): boolean {
 		|| /Name or service not known/i.test(output)
 		|| /Temporary failure in name resolution/i.test(output)
 		|| /Connection closed by/i.test(output)
-		|| /kex_exchange_identification/i.test(output);
+		|| /kex_exchange_identification/i.test(output)
+		|| /Control socket connect/i.test(output);
 }
 
 function connectionFailureReason(output: string): string {
@@ -72,6 +73,8 @@ export function shellQuote(value: string): string {
 }
 
 const defaultSpawn: SpawnSsh = (command, args, options) => nodeSpawn(command, args, options) as unknown as ChildProcessWithoutNullStreams;
+const SSH_SERVER_ALIVE_INTERVAL = 15;
+const SSH_SERVER_ALIVE_COUNT_MAX = 3;
 
 export async function runRemoteSh(session: RuntimeSession, script: string, options: SshRunOptions = {}, spawnSsh: SpawnSsh = defaultSpawn): Promise<SshRunResult> {
 	for (const route of session.routes) {
@@ -87,9 +90,15 @@ export async function runRemoteSh(session: RuntimeSession, script: string, optio
 async function runSingleRoute(session: RuntimeSession, script: string, options: SshRunOptions, spawnSsh: SpawnSsh): Promise<{ raw: RawSshResult; socketAvailable: boolean }> {
 	await mkdir(dirname(session.socket_path), { recursive: true });
 	const controlled = await runSshProcess(buildSshArgs(session, true, script, options.connectTimeout), options, spawnSsh, { streamOutput: true, streamStderrAfterStdout: true });
-	if (!shouldRetryWithoutControl(controlled) || controlled.streamedChunks.length > 0) return { raw: controlled, socketAvailable: true };
+	const staleMultiplexFailure = isStaleMultiplexFailureOutput(controlled.output);
+	if (staleMultiplexFailure) await invalidateManagedSocket(session.socket_path);
+	if (!shouldRetryWithoutControl(controlled) || controlled.streamedChunks.length > 0) return { raw: controlled, socketAvailable: !staleMultiplexFailure };
 	const plain = await runSshProcess(buildSshArgs(session, false, script, options.connectTimeout), options, spawnSsh, { streamOutput: true, streamStderrAfterStdout: true });
 	return { raw: plain, socketAvailable: false };
+}
+
+async function invalidateManagedSocket(socketPath: string): Promise<void> {
+	await rm(socketPath, { force: true });
 }
 
 function deliverBufferedOutput(result: RawSshResult, options: SshRunOptions): void {
@@ -101,6 +110,7 @@ function buildSshArgs(session: RuntimeSession, useControlSocket: boolean, script
 	const args = [...(session.ssh_args ?? [])];
 	if (session.port !== undefined) args.push("-p", String(session.port));
 	args.push("-o", "BatchMode=yes");
+	args.push("-o", `ServerAliveInterval=${SSH_SERVER_ALIVE_INTERVAL}`, "-o", `ServerAliveCountMax=${SSH_SERVER_ALIVE_COUNT_MAX}`);
 	if (connectTimeout !== undefined) args.push("-o", `ConnectTimeout=${connectTimeout}`);
 	if (useControlSocket) {
 		args.push("-o", "ControlMaster=auto", "-o", `ControlPath=${session.socket_path}`, "-o", "ControlPersist=60s");
@@ -199,10 +209,14 @@ function runSshProcess(args: string[], options: SshRunOptions, spawnSsh: SpawnSs
 
 function shouldRetryWithoutControl(result: RawSshResult): boolean {
 	if (result.exitCode !== 255) return false;
-	return /ControlMaster|ControlPath|mux\/control socket unavailable|Bad configuration option/i.test(result.output);
+	return /ControlMaster|ControlPath|Control socket connect|mux\/control socket unavailable|Bad configuration option/i.test(result.output);
 }
 
 function isRouteFailure(result: RawSshResult): boolean {
 	if (result.exitCode !== 255 || result.stdoutChunks.length > 0 || result.streamedChunks.length > 0) return false;
 	return isConnectionFailureOutput(result.output) || /mux_client_request_session: read from master failed|master is dead|Broken pipe|Connection reset by peer/i.test(result.output);
+}
+
+function isStaleMultiplexFailureOutput(output: string): boolean {
+	return /Control socket connect|mux_client_request_session: master is dead|mux_client_request_session: read from master failed/i.test(output);
 }
