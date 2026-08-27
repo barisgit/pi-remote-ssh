@@ -1,5 +1,4 @@
 import { Type } from "@mariozechner/pi-ai";
-import { Text } from "@mariozechner/pi-tui";
 import {
 	createEditToolDefinition,
 	createReadToolDefinition,
@@ -135,9 +134,12 @@ export function createRemoteAwareEditTool(cwd: string, options: CreateRemoteFile
 		renderCall(args: Parameters<NonNullable<typeof localEditTool.renderCall>>[0], theme: Parameters<NonNullable<typeof localEditTool.renderCall>>[1], context: Parameters<NonNullable<typeof localEditTool.renderCall>>[2]) {
 			const editArgs = args as EditParams;
 			if (editArgs.session === undefined) return localEditTool.renderCall!(args, theme, context);
-			const text = context.lastComponent instanceof Text ? context.lastComponent : new Text("", 0, 0);
-			text.setText(`${theme.fg("toolTitle", theme.bold("edit"))} ${theme.fg("accent", editArgs.path)} ${theme.fg("muted", `[session: ${editArgs.session}]`)}`);
-			return text;
+			return localEditTool.renderCall!(renderArgsWithRemotePath(editArgs), theme, { ...context, argsComplete: false });
+		},
+		renderResult(result: Parameters<NonNullable<typeof localEditTool.renderResult>>[0], options: Parameters<NonNullable<typeof localEditTool.renderResult>>[1], theme: Parameters<NonNullable<typeof localEditTool.renderResult>>[2], context: Parameters<NonNullable<typeof localEditTool.renderResult>>[3]) {
+			const editArgs = context.args as EditParams;
+			if (editArgs.session === undefined) return localEditTool.renderResult!(result, options, theme, context);
+			return localEditTool.renderResult!(result, options, theme, { ...context, args: renderArgsWithRemotePath(editArgs) });
 		},
 		async execute(toolCallId: string, params: EditParams, signal?: AbortSignal, onUpdate?: Parameters<typeof localEditTool.execute>[3], ctx: Parameters<typeof localEditTool.execute>[4] = undefined as never) {
 			const localParams = withoutSession(params);

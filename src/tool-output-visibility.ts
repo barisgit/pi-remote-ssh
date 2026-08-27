@@ -28,12 +28,13 @@ type StatusLineOptions = {
 type ContainerPatched = Container & Record<PropertyKey, any>;
 type ToolExecutionComponentPatched = Record<PropertyKey, any>;
 
-const FALLBACK_PREVIEW_PATCH_KEY = Symbol.for("pi.toolOutputVisibility.fallbackPreviewPatched");
 const DYNAMIC_EXPANDED_SHELL_PATCH_KEY = Symbol.for("pi.toolOutputVisibility.dynamicExpandedShellPatched");
-const DYNAMIC_EXPANDED_SHELL_PATCH_VERSION = 4;
+const DYNAMIC_EXPANDED_SHELL_PATCH_VERSION = 5;
 const DYNAMIC_EXPANDED_SHELL_KEY = Symbol.for("pi.toolOutputVisibility.dynamicExpandedShell");
+const EXPANDED_RENDER_SHELL_KEY = Symbol.for("pi.toolOutputVisibility.expandedRenderShell");
 const COMPACT_PARENT_KEY = Symbol.for("pi.toolOutputVisibility.compactParent");
 const COMPACT_BLOCK_SPACER_KEY = Symbol.for("pi.toolOutputVisibility.compactBlockSpacer");
+const COMPACT_HIDDEN_RESULT_KEY = Symbol.for("pi.toolOutputVisibility.compactHiddenResult");
 const ORIGINAL_ADD_CHILD_KEY = Symbol.for("pi.toolOutputVisibility.originalAddChild");
 const ORIGINAL_GET_TEXT_OUTPUT_KEY = Symbol.for("pi.toolOutputVisibility.originalGetTextOutput");
 const ORIGINAL_GET_RENDER_SHELL_KEY = Symbol.for("pi.toolOutputVisibility.originalGetRenderShell");
@@ -59,10 +60,12 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 	return {
 		...tool,
 		[DYNAMIC_EXPANDED_SHELL_KEY]: true,
+		[EXPANDED_RENDER_SHELL_KEY]: tool.renderShell ?? "default",
 		renderShell: "self",
 		renderCall(args: any, theme: any, context: any) {
 			if (context.expanded) {
-				return tool.renderCall?.(args, theme, context) ?? ((context.lastComponent as Text | undefined) ?? new Text("", 0, 0));
+				const expandedContext = context.lastComponent instanceof DynamicCompactCallText ? { ...context, lastComponent: undefined } : context;
+				return tool.renderCall?.(args, theme, expandedContext) ?? ((expandedContext.lastComponent as Text | undefined) ?? new Text("", 0, 0));
 			}
 
 			const compact = context.lastComponent instanceof DynamicCompactCallText ? context.lastComponent : new DynamicCompactCallText();
@@ -78,7 +81,8 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 		renderResult(result: any, options: any, theme: any, context: any) {
 			const sanitizedResult = sanitizeToolResultPayload(result);
 			if (options.expanded) {
-				return tool.renderResult?.(sanitizedResult, options, theme, context) ?? new Container();
+				const expandedContext = context.lastComponent?.[COMPACT_HIDDEN_RESULT_KEY] ? { ...context, lastComponent: undefined } : context;
+				return tool.renderResult?.(sanitizedResult, options, theme, expandedContext) ?? new Container();
 			}
 
 			if (options.isPartial) {
@@ -89,7 +93,9 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 				return tool.renderResult?.(sanitizedResult, options, theme, context) ?? new Text(theme.fg("error", "failed"), 0, 0);
 			}
 
-			return new Container();
+			const hidden = new Container() as ContainerPatched;
+			hidden[COMPACT_HIDDEN_RESULT_KEY] = true;
+			return hidden;
 		},
 	} as TDefinition;
 }
@@ -215,22 +221,14 @@ function collapseFallbackOutput(text: string, isExpanded: boolean, isPartial: bo
 }
 
 function patchGenericFallbackPreview() {
-	const state = globalThis as typeof globalThis & { [FALLBACK_PREVIEW_PATCH_KEY]?: boolean };
-	if (state[FALLBACK_PREVIEW_PATCH_KEY]) return;
-
 	const prototype = ToolExecutionComponent.prototype as ToolExecutionComponentPatched;
-	if (prototype[ORIGINAL_GET_TEXT_OUTPUT_KEY]) {
-		state[FALLBACK_PREVIEW_PATCH_KEY] = true;
-		return;
-	}
+	if (prototype[ORIGINAL_GET_TEXT_OUTPUT_KEY]) return;
 
 	prototype[ORIGINAL_GET_TEXT_OUTPUT_KEY] = prototype.getTextOutput;
 	prototype.getTextOutput = function patchedGetTextOutput(this: ToolExecutionComponentPatched) {
 		const output = prototype[ORIGINAL_GET_TEXT_OUTPUT_KEY]?.call(this) ?? "";
 		return collapseFallbackOutput(output, Boolean(this.expanded), Boolean(this.isPartial));
 	};
-
-	state[FALLBACK_PREVIEW_PATCH_KEY] = true;
 }
 
 function hasDynamicExpandedShell(component: ToolExecutionComponentPatched) {
@@ -239,10 +237,9 @@ function hasDynamicExpandedShell(component: ToolExecutionComponentPatched) {
 
 function patchContainerParents() {
 	const prototype = Container.prototype as ContainerPatched;
-	if (!prototype[ORIGINAL_ADD_CHILD_KEY]) {
-		prototype[ORIGINAL_ADD_CHILD_KEY] = prototype.addChild;
-	}
+	if (prototype[ORIGINAL_ADD_CHILD_KEY]) return;
 
+	prototype[ORIGINAL_ADD_CHILD_KEY] = prototype.addChild;
 	prototype.addChild = function patchedAddChild(this: ContainerPatched, child: Component) {
 		(child as Component & { [COMPACT_PARENT_KEY]?: ContainerPatched })[COMPACT_PARENT_KEY] = this;
 		return prototype[ORIGINAL_ADD_CHILD_KEY]?.call(this, child);
@@ -281,10 +278,8 @@ function syncDynamicShellContainer(component: ToolExecutionComponentPatched) {
 }
 
 function patchDynamicExpandedShell() {
-	const state = globalThis as typeof globalThis & { [DYNAMIC_EXPANDED_SHELL_PATCH_KEY]?: boolean | number };
-	if (state[DYNAMIC_EXPANDED_SHELL_PATCH_KEY] === DYNAMIC_EXPANDED_SHELL_PATCH_VERSION) return;
-
 	const prototype = ToolExecutionComponent.prototype as ToolExecutionComponentPatched;
+	if (prototype[DYNAMIC_EXPANDED_SHELL_PATCH_KEY] === DYNAMIC_EXPANDED_SHELL_PATCH_VERSION) return;
 	if (!prototype[ORIGINAL_GET_RENDER_SHELL_KEY]) {
 		prototype[ORIGINAL_GET_RENDER_SHELL_KEY] = prototype.getRenderShell;
 	}
@@ -294,7 +289,7 @@ function patchDynamicExpandedShell() {
 		}
 
 		if (this.expanded) {
-			return this.builtInToolDefinition?.renderShell ?? "default";
+			return this.toolDefinition?.[EXPANDED_RENDER_SHELL_KEY] ?? "default";
 		}
 
 		return "self";
@@ -310,7 +305,7 @@ function patchDynamicExpandedShell() {
 		return result;
 	};
 
-	state[DYNAMIC_EXPANDED_SHELL_PATCH_KEY] = DYNAMIC_EXPANDED_SHELL_PATCH_VERSION;
+	prototype[DYNAMIC_EXPANDED_SHELL_PATCH_KEY] = DYNAMIC_EXPANDED_SHELL_PATCH_VERSION;
 }
 
 function formatPath(value: unknown, max = 48) {

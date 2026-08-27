@@ -3,9 +3,14 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { createEditToolDefinition, initTheme, ToolExecutionComponent } from "@mariozechner/pi-coding-agent";
 import { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "../src/remote-files.js";
 import { SessionManager } from "../src/session-manager.js";
 import type { SpawnSsh } from "../src/ssh.js";
+
+initTheme("dark", false);
+
+const ui = { requestRender() {} } as never;
 
 let stateDir: string;
 let manager: SessionManager;
@@ -62,28 +67,46 @@ describe("slice 3 remote file tools", () => {
 		expect(called).toBe(false);
 	});
 
-	test("remote edit renderCall shows session without invoking local preview renderer", () => {
-		let localRenderCalls = 0;
-		const localEditTool = {
-			name: "edit",
-			label: "edit",
-			description: "local",
-			parameters: {},
-			renderCall: () => {
-				localRenderCalls += 1;
-				return undefined as never;
-			},
-			execute: async () => ({ content: [{ type: "text" as const, text: "edited" }] }),
-		};
-		const tool = createRemoteAwareEditTool(workspace, { managerFactory: () => manager, localEditTool: localEditTool as never });
-		const theme = fakeTheme();
-		const localResult = tool.renderCall({ path: "local.txt", edits: [] } as never, theme as never, { lastComponent: undefined } as never);
-		const remoteResult = tool.renderCall({ session: "box", path: "/tmp/file.txt", edits: [] } as never, theme as never, { lastComponent: undefined } as never);
+	test("remote edit keeps the built-in frame without a local preview error and retains its session after success", async () => {
+		const tool = createRemoteAwareEditTool(workspace, { managerFactory: () => manager });
+		const component = new ToolExecutionComponent("edit", "edit-id", {
+			session: "box",
+			path: "remote-only.txt",
+			edits: [{ oldText: "old", newText: "new" }],
+		}, {}, tool as never, ui, workspace);
+		component.markExecutionStarted();
+		component.setArgsComplete();
+		await new Promise((resolve) => setTimeout(resolve, 20));
 
-		expect(localResult).toBeUndefined();
-		expect(localRenderCalls).toBe(1);
-		expect(remoteResult.render(120).join("\n")).toContain("[session: box]");
-		expect(localRenderCalls).toBe(1);
+		const pending = component.render(120).join("\n");
+		expect(pending).toContain("remote-only.txt [session: box]");
+		expect(pending).not.toContain("Could not edit file");
+		expect(pending.split("\n").length).toBeGreaterThanOrEqual(3);
+		expect(pending).toContain("\u001b[48;2;");
+
+		component.updateResult({
+			content: [{ type: "text", text: "Successfully replaced 1 block(s) in remote-only.txt." }],
+			details: { diff: "@@ -1 +1 @@\n-old\n+new", firstChangedLine: 1 },
+		} as never);
+
+		const completed = component.render(120).join("\n");
+		expect(completed).toContain("remote-only.txt [session: box]");
+		expect(completed.split("\n").length).toBeGreaterThanOrEqual(3);
+		expect(completed).toContain("\u001b[48;2;");
+		expect(completed).toContain("new");
+		expect(completed).not.toContain("Could not edit file");
+	});
+
+	test("local edit rendering remains identical to the built-in definition", async () => {
+		await writeFile(join(workspace, "local.txt"), "old\n");
+		const args = { path: "local.txt", edits: [{ oldText: "old", newText: "new" }] };
+		const wrapped = new ToolExecutionComponent("edit", "wrapped-id", args, {}, createRemoteAwareEditTool(workspace, { managerFactory: () => manager }) as never, ui, workspace);
+		const builtIn = new ToolExecutionComponent("edit", "built-in-id", args, {}, createEditToolDefinition(workspace) as never, ui, workspace);
+		wrapped.setArgsComplete();
+		builtIn.setArgsComplete();
+		await new Promise((resolve) => setTimeout(resolve, 20));
+
+		expect(wrapped.render(120)).toEqual(builtIn.render(120));
 	});
 
 	test("remote read uses remote_cwd for relative paths and Pi offset\/limit formatting", async () => {
@@ -171,12 +194,6 @@ function textContent(result: { content: Array<{ type: string; text?: string }> }
 	return result.content.find((item) => item.type === "text")?.text ?? "";
 }
 
-function fakeTheme() {
-	return {
-		bold: (text: string) => text,
-		fg: (_color: string, text: string) => text,
-	};
-}
 
 function createRemoteFs(initialFiles: Record<string, string>) {
 	const files = new Map(Object.entries(initialFiles));
