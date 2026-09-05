@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, writeFile } from "node:fs/promises";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { SessionManager, RegistryParseError, RegistryLockError } from "../src/session-manager.js";
@@ -195,6 +195,83 @@ describe("slice 1 session registry and lifecycle", () => {
 		expect((await manager.listSessions()).entries[0]).toMatchObject({ socket_status: "present" });
 		await manager.deleteSession("lab/pi-01");
 		await expect(stat(created.socket_path)).rejects.toThrow();
+	});
+
+	test("cleanup does not traverse nested directory symlinks", async () => {
+		await manager.ensureStateDir();
+		const victimDir = join(stateDir, "victim");
+		const victimFile = join(victimDir, "keep");
+		await mkdir(victimDir);
+		await writeFile(victimFile, "not a managed socket");
+		await symlink(victimDir, join(manager.socketsDir, "link"));
+
+		await manager.cleanupUnreferencedSocketFiles();
+
+		expect(await readFile(victimFile, "utf8")).toBe("not a managed socket");
+	});
+
+	test("cleanup does not traverse a symlinked socket root", async () => {
+		const victimDir = join(stateDir, "victim");
+		const victimFile = join(victimDir, "keep");
+		await mkdir(victimDir);
+		await writeFile(victimFile, "not a managed socket");
+		await symlink(victimDir, manager.socketsDir);
+
+		await manager.cleanupUnreferencedSocketFiles();
+
+		expect(await readFile(victimFile, "utf8")).toBe("not a managed socket");
+	});
+
+	test("cleanup supports an external short socket root and preserves referenced routes", async () => {
+		const socketDir = await mkdtemp(join("/tmp", "prs-test-"));
+		const externalManager = new SessionManager({ stateDir, socketDir });
+		const created = await externalManager.createSession({ path: "lab/box", targets: ["first.invalid", "second.invalid"] });
+		const fallbackRoot = dirname(created.routes[1]!.socket_path);
+		try {
+			expect(created.socket_path).toBe(join(socketDir, "lab", "box", "c"));
+			for (const route of created.routes) {
+				await mkdir(dirname(route.socket_path), { recursive: true });
+				await writeFile(route.socket_path, "referenced socket placeholder");
+			}
+			const victimDir = join(stateDir, "victim");
+			await mkdir(victimDir);
+			await writeFile(join(victimDir, "keep"), "not managed");
+			for (const root of [socketDir, fallbackRoot]) {
+				await mkdir(join(root, "orphan"));
+				await writeFile(join(root, "orphan", "c"), "stale socket placeholder");
+				await symlink(victimDir, join(root, "link"));
+				await symlink(join(victimDir, "keep"), join(root, "file-link"));
+			}
+
+			await externalManager.cleanupUnreferencedSocketFiles();
+			await externalManager.createSession({ path: "new", target: "offline.invalid" });
+
+			for (const route of created.routes) {
+				expect(await readFile(route.socket_path, "utf8")).toBe("referenced socket placeholder");
+			}
+			for (const root of [socketDir, fallbackRoot]) {
+				await expect(stat(join(root, "orphan", "c"))).rejects.toThrow();
+			}
+			expect(await readFile(join(victimDir, "keep"), "utf8")).toBe("not managed");
+		} finally {
+			await rm(socketDir, { recursive: true, force: true });
+			await rm(fallbackRoot, { recursive: true, force: true });
+		}
+	});
+
+	test("cleanup does not traverse a symlinked fallback socket root", async () => {
+		const root = dirname(manager.deriveSocketPath("long".repeat(100)));
+		const victimDir = join(stateDir, "victim");
+		await mkdir(victimDir);
+		await writeFile(join(victimDir, "keep"), "not managed");
+		await mkdir(dirname(root), { recursive: true });
+		await symlink(victimDir, root);
+		try {
+			await manager.cleanupUnreferencedSocketFiles();
+			expect(await readFile(join(victimDir, "keep"), "utf8")).toBe("not managed");
+		} finally {
+			await rm(root, { force: true });
+		}
 	});
 
 	test("create/list save unreachable hosts and perform no network probe", async () => {

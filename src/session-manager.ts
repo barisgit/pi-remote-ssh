@@ -1,6 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 import { constants } from "node:fs";
-import { access, chmod, mkdir, open, readFile, readdir, rename, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { access, chmod, lstat, mkdir, open, readFile, readdir, rename, rm, unlink, writeFile } from "node:fs/promises";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import {
@@ -456,14 +456,16 @@ export class SessionManager {
 	private async walkSocketFiles(root: string, visit: (filePath: string) => Promise<void>): Promise<void> {
 		let entries: string[];
 		try {
+			// Socket roots may live outside stateDir, but must be real directories.
+			if (!(await lstat(root)).isDirectory()) return;
 			entries = await readdir(root);
 		} catch {
 			return;
 		}
 		for (const entry of entries) {
 			const path = join(root, entry);
-			const info = await stat(path).catch(() => undefined);
-			if (!info) continue;
+			const info = await lstat(path).catch(() => undefined);
+			if (!info || info.isSymbolicLink()) continue;
 			if (info.isDirectory()) await this.walkSocketFiles(path, visit);
 			else await visit(path);
 		}
