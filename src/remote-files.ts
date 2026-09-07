@@ -179,7 +179,13 @@ export class RemoteContext {
 		const stderr = Buffer.concat(stderrChunks).toString("utf8");
 		if (result.exitCode !== 0) throw new Error(stderr.trim() || stdout.trim() || `Remote python3 helper failed with exit code ${result.exitCode}.`);
 		try {
-			return JSON.parse(stdout);
+			// Login profiles can print banners before (or after) the helper response.
+			// Frame the JSON rather than guessing which braces belong to our reply.
+			const marker = "\x1epi-remote-ssh:";
+			const start = stdout.indexOf(marker);
+			const end = stdout.indexOf("\x1f", start + marker.length);
+			if (start < 0 || end < 0) throw new Error("Missing or incomplete helper response frame.");
+			return JSON.parse(stdout.slice(start + marker.length, end));
 		} catch (error: any) {
 			const noise = stderr.trim();
 			throw new Error(`Remote python3 helper returned invalid JSON${noise ? ` (stderr: ${noise})` : ""}: ${error.message}`);
@@ -301,7 +307,7 @@ request = json.loads(base64.b64decode(sys.argv[1]).decode("utf-8"))
 op = request["op"]
 
 def reply(value):
-    sys.stdout.write(json.dumps(value, separators=(",", ":")))
+    sys.stdout.write("\x1epi-remote-ssh:" + json.dumps(value, separators=(",", ":")) + "\x1f")
 
 def fail(message, code=1):
     sys.stderr.write(str(message) + "\n")

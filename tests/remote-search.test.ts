@@ -68,8 +68,8 @@ describe("remote ls grep find", () => {
 		await manager.createSession({ path: "box", target: "host", remote_cwd: "/srv/app" });
 		const spawn = createMockSpawn(({ args }) => {
 			const request = decodeRequest(args.at(-1) ?? "");
-			if (request.op === "stat_is_dir") return { stdout: JSON.stringify({ exists: true, is_dir: true }), stderr: "ControlSocket /tmp/noise already exists\n", code: 0 };
-			if (request.op === "glob_files") return { stdout: JSON.stringify({ paths: ["/srv/app/src/index.ts"] }), stderr: "ControlSocket /tmp/noise already exists\n", code: 0 };
+			if (request.op === "stat_is_dir") return { stdout: helperReply({ exists: true, is_dir: true }), stderr: "ControlSocket /tmp/noise already exists\n", code: 0 };
+			if (request.op === "glob_files") return { stdout: helperReply({ paths: ["/srv/app/src/index.ts"] }), stderr: "ControlSocket /tmp/noise already exists\n", code: 0 };
 			return { stderr: `Unknown op: ${request.op}\n`, code: 1 };
 		});
 		const find = createRemoteAwareFindTool(workspace, { managerFactory: () => manager, spawnSsh: spawn });
@@ -119,10 +119,10 @@ function createRemoteSearchFs() {
 	const spawn = createMockSpawn(({ args }) => {
 		const request = decodeRequest(args.at(-1) ?? "");
 		ops.push({ op: request.op, path: request.path });
-		if (request.op === "stat_is_dir") return { stdout: JSON.stringify({ exists: true, is_dir: true }), code: 0 };
-		if (request.op === "list_dir") return { stdout: JSON.stringify({ entries: ["index.ts", "nested"] }), code: 0 };
-		if (request.op === "glob_files") return { stdout: JSON.stringify({ paths: ["/srv/app/src/index.ts"] }), code: 0 };
-		if (request.op === "grep_files") return { stdout: JSON.stringify({ output: "index.ts:1: const needle = true;", matchLimitReached: null }), code: 0 };
+		if (request.op === "stat_is_dir") return { stdout: helperReply({ exists: true, is_dir: true }), code: 0 };
+		if (request.op === "list_dir") return { stdout: helperReply({ entries: ["index.ts", "nested"] }), code: 0 };
+		if (request.op === "glob_files") return { stdout: helperReply({ paths: ["/srv/app/src/index.ts"] }), code: 0 };
+		if (request.op === "grep_files") return { stdout: helperReply({ output: "index.ts:1: const needle = true;", matchLimitReached: null }), code: 0 };
 		return { stderr: `Unknown op: ${request.op}\n`, code: 1 };
 	});
 	return { ops, spawn };
@@ -163,4 +163,8 @@ class MockChild extends EventEmitter {
 		queueMicrotask(() => this.emit("close", null));
 		return true;
 	}
+}
+
+function helperReply(value: unknown): string {
+	return "\x1epi-remote-ssh:" + JSON.stringify(value) + "\x1f";
 }

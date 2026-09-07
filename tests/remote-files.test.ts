@@ -4,7 +4,7 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createEditToolDefinition, initTheme, ToolExecutionComponent } from "@mariozechner/pi-coding-agent";
-import { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "../src/remote-files.js";
+import { createRemoteContext, createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "../src/remote-files.js";
 import { SessionManager } from "../src/session-manager.js";
 import type { SpawnSsh } from "../src/ssh.js";
 
@@ -135,9 +135,9 @@ describe("slice 3 remote file tools", () => {
 		expect(result.details).toMatchObject({ remote: true, path: "/srv/app/manual.ts" });
 	});
 
-	test("remote absolute write edit read persists at the same path", async () => {
+	test("remote absolute write edit read persists despite welcome and logout banners", async () => {
 		await manager.createSession({ path: "box", target: "host", remote_cwd: "/srv/app" });
-		const remote = createRemoteFs({});
+		const remote = createRemoteFs({}, "TM42 serial=test\n{not JSON}\n", "\nlogout banner\n");
 		const write = createRemoteAwareWriteTool(workspace, { managerFactory: () => manager, spawnSsh: remote.spawn });
 		const edit = createRemoteAwareEditTool(workspace, { managerFactory: () => manager, spawnSsh: remote.spawn });
 		const read = createRemoteAwareReadTool(workspace, { managerFactory: () => manager, spawnSsh: remote.spawn });
@@ -163,6 +163,28 @@ describe("slice 3 remote file tools", () => {
 		expect(textContent(result)).toContain("Successfully replaced 1 block");
 		expect(result.details).toMatchObject({ remote: true, path: "/srv/app/file.txt" });
 		expect(remote.ops.map((op) => op.op)).toContain("write_file");
+	});
+
+	for (const stdout of [
+		'TM42 serial=test\n{"ok":true}',
+		'\x1epi-remote-ssh:{"ok":true}',
+		'\x1epi-remote-ssh:{invalid}\x1f',
+	]) {
+		test(`rejects missing, incomplete or malformed helper frames: ${JSON.stringify(stdout)}`, async () => {
+			await manager.createSession({ path: "box", target: "host", remote_cwd: "/srv/app" });
+			const spawn = createMockSpawn(() => ({ stdout, code: 0 }));
+			const remote = await createRemoteContext(manager, "box", spawn);
+			await expect(remote.runPython("mkdir", { path: "/srv/app" })).rejects.toThrow(/invalid JSON/);
+			expect(spawn.calls).toHaveLength(1);
+		});
+	}
+
+	test("nonzero helper exits remain errors even with a valid JSON frame", async () => {
+		await manager.createSession({ path: "box", target: "host", remote_cwd: "/srv/app" });
+		const spawn = createMockSpawn(() => ({ stdout: helperReply({ ok: true }), stderr: "Permission denied", code: 1 }));
+		const remote = await createRemoteContext(manager, "box", spawn);
+		await expect(remote.runPython("mkdir", { path: "/srv/app" })).rejects.toThrow("Permission denied");
+		expect(spawn.calls).toHaveLength(1);
 	});
 
 	test("remote file tools fail clearly when python3 is missing", async () => {
@@ -195,7 +217,7 @@ function textContent(result: { content: Array<{ type: string; text?: string }> }
 }
 
 
-function createRemoteFs(initialFiles: Record<string, string>) {
+function createRemoteFs(initialFiles: Record<string, string>, prefix = "", suffix = "") {
 	const files = new Map(Object.entries(initialFiles));
 	const ops: RemoteOp[] = [];
 	const spawn = createMockSpawn(({ args }) => {
@@ -203,26 +225,26 @@ function createRemoteFs(initialFiles: Record<string, string>) {
 		ops.push({ op: request.op, path: request.path });
 		if (request.op === "access_read" || request.op === "access_edit") {
 			if (!files.has(request.path)) return { stderr: `ENOENT: ${request.path}\n`, code: 1 };
-			return { stdout: JSON.stringify({ ok: true }), code: 0 };
+			return { stdout: helperReply({ ok: true }), code: 0 };
 		}
 		if (request.op === "read_file") {
 			const content = files.get(request.path);
 			if (content === undefined) return { stderr: `ENOENT: ${request.path}\n`, code: 1 };
-			return { stdout: JSON.stringify({ data: Buffer.from(content, "utf8").toString("base64") }), code: 0 };
+			return { stdout: helperReply({ data: Buffer.from(content, "utf8").toString("base64") }), code: 0 };
 		}
 		if (request.op === "read_prefix") {
 			const content = files.get(request.path);
-			if (content === undefined) return { stdout: JSON.stringify({ exists: false, data: "" }), code: 0 };
+			if (content === undefined) return { stdout: helperReply({ exists: false, data: "" }), code: 0 };
 			const prefix = content.slice(0, Number(request.bytes ?? 1024));
-			return { stdout: JSON.stringify({ exists: true, data: Buffer.from(prefix, "utf8").toString("base64") }), code: 0 };
+			return { stdout: helperReply({ exists: true, data: Buffer.from(prefix, "utf8").toString("base64") }), code: 0 };
 		}
-		if (request.op === "mkdir") return { stdout: JSON.stringify({ ok: true }), code: 0 };
+		if (request.op === "mkdir") return { stdout: helperReply({ ok: true }), code: 0 };
 		if (request.op === "write_file") {
 			files.set(request.path, Buffer.from(request.content, "base64").toString("utf8"));
-			return { stdout: JSON.stringify({ ok: true, atomic: true }), code: 0 };
+			return { stdout: helperReply({ ok: true, atomic: true }), code: 0 };
 		}
 		return { stderr: `Unknown op: ${request.op}\n`, code: 1 };
-	});
+	}, prefix, suffix);
 	return { files, ops, spawn };
 }
 
@@ -233,7 +255,7 @@ function decodeRequest(script: string): any {
 	return JSON.parse(Buffer.from(match[1]!, "base64").toString("utf8"));
 }
 
-function createMockSpawn(respond: (call: MockCall) => MockResponse): SpawnSsh & { calls: MockCall[] } {
+function createMockSpawn(respond: (call: MockCall) => MockResponse, prefix = "", suffix = ""): SpawnSsh & { calls: MockCall[] } {
 	const calls: MockCall[] = [];
 	const spawn = ((command: string, args: string[]) => {
 		const call = { command, args };
@@ -241,7 +263,7 @@ function createMockSpawn(respond: (call: MockCall) => MockResponse): SpawnSsh & 
 		const child = new MockChild();
 		queueMicrotask(() => {
 			const response = respond(call);
-			if (response.stdout) child.stdout.emit("data", Buffer.from(response.stdout));
+			if (response.stdout) child.stdout.emit("data", Buffer.from(prefix + response.stdout + suffix));
 			if (response.stderr) child.stderr.emit("data", Buffer.from(response.stderr));
 			child.emit("close", response.code);
 		});
@@ -261,4 +283,8 @@ class MockChild extends EventEmitter {
 		queueMicrotask(() => this.emit("close", null));
 		return true;
 	}
+}
+
+function helperReply(value: unknown): string {
+	return "\x1epi-remote-ssh:" + JSON.stringify(value) + "\x1f";
 }
