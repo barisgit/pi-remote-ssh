@@ -131,9 +131,10 @@ class DynamicCompactCallText implements Component {
 
 		const { name, args, theme, isRunning, showExpandHint } = this.state;
 		const expandHint = showExpandHint ? ` ${expandHintText(theme)}` : "";
-		const callWidth = Math.max(1, width - visibleWidth(expandHint));
+		const contentWidth = Math.max(0, width - 2);
+		const callWidth = Math.max(1, contentWidth - visibleWidth(expandHint));
 		const line = truncateToWidth(compactCallText(name, args, theme, isRunning, callWidth), callWidth, "");
-		return [truncateToWidth(`${line}${expandHint}`, width, "")];
+		return [truncateToWidth(` ${truncateToWidth(`${line}${expandHint}`, contentWidth, "")} `, width, "")];
 	}
 
 	invalidate() {}

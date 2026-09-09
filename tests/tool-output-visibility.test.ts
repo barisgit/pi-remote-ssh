@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { initTheme, ToolExecutionComponent } from "@mariozechner/pi-coding-agent";
-import { Box, Container, Text } from "@mariozechner/pi-tui";
+import { Box, Container, Text, visibleWidth } from "@mariozechner/pi-tui";
 import remoteSshExtension from "../src/index.js";
 import { installToolOutputVisibility, withCompactHiddenResult } from "../src/tool-output-visibility.js";
 
@@ -43,6 +43,13 @@ describe("remote tool output visibility", () => {
 
 			expect(component.children.some((child) => child instanceof Box)).toBe(false);
 			expect(component.render(120).join("\n")).toContain("session: lab/pi");
+			for (const width of [40, 120]) {
+				const lines = component.render(width).map((line) => Bun.stripANSI(line)).filter((line) => line.trim());
+				expect(lines).toHaveLength(1);
+				expect(lines[0]).toMatch(/^ \S/);
+				expect(lines[0]).toEndWith(" ");
+				expect(visibleWidth(lines[0]!)).toBeLessThanOrEqual(width);
+			}
 
 			component.setExpanded(true);
 
