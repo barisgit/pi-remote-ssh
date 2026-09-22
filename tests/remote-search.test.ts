@@ -22,6 +22,44 @@ afterEach(async () => {
 	await rm(workspace, { recursive: true, force: true });
 });
 
+test.each(["ls", "find", "grep"] as const)("remote %s cancels an in-flight helper with cached cwd", async (name) => {
+	await manager.createSession({ path: "box", target: "host", remote_cwd: "/srv/app" });
+	const controller = new AbortController();
+	const signals: string[] = [];
+	let cleaned!: () => void;
+	const didClean = new Promise<void>((resolve) => { cleaned = resolve; });
+	let calls = 0;
+	let spawned!: () => void;
+	const didSpawn = new Promise<void>((resolve) => { spawned = resolve; });
+	const spawn: SpawnSsh = () => {
+		calls++;
+		const child = Object.assign(new EventEmitter(), {
+			stdout: new EventEmitter(), stderr: new EventEmitter(),
+			kill: (signal: string) => {
+				signals.push(signal);
+				if (signal === "SIGKILL") cleaned();
+				return true;
+			},
+		});
+		spawned();
+		return child as never;
+	};
+	const options = { managerFactory: () => manager, spawnSsh: spawn };
+	const pending = name === "ls"
+		? createRemoteAwareLsTool(workspace, options).execute("id", { session: "box", path: "." }, controller.signal, undefined)
+		: name === "find"
+			? createRemoteAwareFindTool(workspace, options).execute("id", { session: "box", pattern: "*.ts" }, controller.signal, undefined)
+			: createRemoteAwareGrepTool(workspace, options).execute("id", { session: "box", pattern: "needle" }, controller.signal, undefined);
+	const result = pending.then(() => "resolved", (error: Error) => error.message);
+	await didSpawn;
+	controller.abort();
+	expect(await result).toMatch(/aborted|cancelled/i);
+	// Pi may reject the tool before its operations finish cleaning up.
+	await didClean;
+	expect(calls).toBe(1);
+	expect(signals).toEqual(["SIGTERM", "SIGKILL"]);
+}, 2500);
+
 describe("remote ls grep find", () => {
 	test("local ls/grep/find delegate unchanged and preserve tool metadata", async () => {
 		const calls: unknown[][] = [];

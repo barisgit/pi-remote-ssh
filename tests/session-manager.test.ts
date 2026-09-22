@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, test } from "bun:test";
-import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
+import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
+import { hostname, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { SessionManager, RegistryParseError, RegistryLockError } from "../src/session-manager.js";
 
@@ -148,6 +148,46 @@ describe("slice 1 session registry and lifecycle", () => {
 		await shortWait.ensureStateDir();
 		await mkdirLock(shortWait.lockPath);
 		await expect(shortWait.createSession({ path: "blocked", target: "host" })).rejects.toBeInstanceOf(RegistryLockError);
+	});
+
+	for (const metadata of [undefined, "{ broken json", '{"created_at":"invalid"}', "null", "unreadable"]) {
+		for (const stale of [true, false]) {
+			test(`${stale ? "recovers stale" : "protects fresh"} lock with unusable metadata: ${metadata}`, async () => {
+				const locked = new SessionManager({ stateDir, lockWaitMs: 50 });
+				await locked.ensureStateDir();
+				await mkdir(locked.lockPath);
+				const ownerPath = join(locked.lockPath, "owner.json");
+				if (metadata === "unreadable") await mkdir(ownerPath);
+				else if (metadata !== undefined) await writeFile(ownerPath, metadata);
+				const modified = new Date(Date.now() - (stale ? 6 * 60_000 : 4 * 60_000));
+				await utimes(locked.lockPath, modified, modified);
+				const original = await stat(locked.lockPath);
+
+				const pending = locked.createSession({ path: "recovered", target: "host" });
+				if (stale) {
+					await pending;
+					expect((await locked.listSessions()).entries.map((entry) => entry.path)).toEqual(["recovered"]);
+					await expect(stat(locked.lockPath)).rejects.toThrow();
+				} else {
+					await expect(pending).rejects.toBeInstanceOf(RegistryLockError);
+					expect((await stat(locked.lockPath)).ino).toBe(original.ino);
+					await expect(stat(locked.registryPath)).rejects.toThrow();
+				}
+			});
+		}
+	}
+
+	test("mtime fallback preserves a live lock owner's protection", async () => {
+		const locked = new SessionManager({ stateDir, lockWaitMs: 50 });
+		await locked.ensureStateDir();
+		await mkdir(locked.lockPath);
+		await writeFile(join(locked.lockPath, "owner.json"), JSON.stringify({
+			pid: process.pid, hostname: hostname(), created_at: "invalid",
+		}));
+		const modified = new Date(Date.now() - 6 * 60_000);
+		await utimes(locked.lockPath, modified, modified);
+		await expect(locked.createSession({ path: "blocked", target: "host" })).rejects.toBeInstanceOf(RegistryLockError);
+		expect((await stat(locked.lockPath)).isDirectory()).toBe(true);
 	});
 
 	test("lock metadata write failure does not leak sessions.lock", async () => {

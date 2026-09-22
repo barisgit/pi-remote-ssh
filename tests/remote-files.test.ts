@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -25,6 +25,60 @@ beforeEach(async () => {
 afterEach(async () => {
 	await rm(stateDir, { recursive: true, force: true });
 	await rm(workspace, { recursive: true, force: true });
+});
+
+test("RemoteContext retains cancellation for file helpers after HOME is cached", async () => {
+	await manager.createSession({ path: "offline", target: "offline.invalid", remote_cwd: "/home/paxia" });
+	const controller = new AbortController();
+	const children: Array<EventEmitter & { stdout: EventEmitter; stderr: EventEmitter; kill: () => boolean }> = [];
+	let spawned!: () => void;
+	const didSpawn = new Promise<void>((resolve) => { spawned = resolve; });
+	const spawn: SpawnSsh = () => {
+		const child = Object.assign(new EventEmitter(), {
+			stdout: new EventEmitter(), stderr: new EventEmitter(),
+			kill: () => { queueMicrotask(() => child.emit("close", null)); return true; },
+		});
+		children.push(child);
+		spawned();
+		return child as never;
+	};
+	const tool = createRemoteAwareWriteTool(workspace, { managerFactory: () => manager, spawnSsh: spawn });
+	const pending = tool.execute("id", { session: "offline", path: "/home/paxia/rsnode-monitor.map-v1.json.tmp", content: "{}" }, controller.signal, undefined);
+	const result = pending.then(() => "resolved", (error: Error) => error.message);
+	await didSpawn;
+	controller.abort();
+	let timer: ReturnType<typeof setTimeout>;
+	const message = await Promise.race([result, new Promise<string>((resolve) => { timer = setTimeout(() => resolve("HUNG"), 1500); })]);
+	clearTimeout(timer!);
+	// Close failed fixtures too, so the red test leaves no transport timer behind.
+	for (const child of children) child.emit("close", 1);
+	expect(message).toContain("aborted");
+	expect(children).toHaveLength(1);
+});
+
+test("file helpers install a 60-second command deadline, not just a connect deadline", async () => {
+	await manager.createSession({ path: "box", target: "host", remote_cwd: "/tmp" });
+	let child!: EventEmitter & { stdout: EventEmitter; stderr: EventEmitter };
+	let spawned!: () => void;
+	const didSpawn = new Promise<void>((resolve) => { spawned = resolve; });
+	const spawn: SpawnSsh = () => {
+		child = Object.assign(new EventEmitter(), { stdout: new EventEmitter(), stderr: new EventEmitter() });
+		spawned();
+		return child as never;
+	};
+	const remote = await createRemoteContext(manager, "box", spawn);
+	const timers = spyOn(globalThis, "setTimeout");
+	try {
+		const pending = remote.runPython("write_file", { path: "/tmp/file", content: "eA==" });
+		await didSpawn;
+		const delays = timers.mock.calls.map((call) => Number(call[1]));
+		child.stdout.emit("data", Buffer.from('\x1epi-remote-ssh:{"ok":true}\x1f'));
+		child.emit("close", 0);
+		await pending;
+		expect(delays.some((delay) => delay > 59_000 && delay <= 60_000)).toBe(true);
+	} finally {
+		timers.mockRestore();
+	}
 });
 
 describe("slice 3 remote file tools", () => {

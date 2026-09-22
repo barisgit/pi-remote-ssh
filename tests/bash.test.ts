@@ -1,4 +1,4 @@
-import { afterEach, beforeEach, describe, expect, test } from "bun:test";
+import { afterEach, beforeEach, describe, expect, spyOn, test } from "bun:test";
 import { EventEmitter } from "node:events";
 import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
@@ -18,6 +18,30 @@ beforeEach(async () => {
 
 afterEach(async () => {
 	await rm(stateDir, { recursive: true, force: true });
+});
+
+test.each([undefined, 120, 3])("HOME setup deadline is bounded without limiting bash (timeout=%s)", async (timeout) => {
+	await manager.createSession({ path: "home-bound", target: "host" });
+	const timers = spyOn(globalThis, "setTimeout");
+	const delays: number[][] = [];
+	const spawn = createMockSpawn(() => {
+		delays.push(timers.mock.calls.map((call) => Number(call[1])));
+		timers.mockClear();
+		return { stdout: delays.length === 1 ? "/home/tester\n" : "ok\n", code: 0 };
+	});
+	try {
+		const tool = createRemoteAwareBashTool(process.cwd(), { managerFactory: () => manager, spawnSsh: spawn });
+		await tool.execute("id", { session: "home-bound", command: "true", ...(timeout === undefined ? {} : { timeout }) }, undefined, undefined);
+		const homeMs = Math.min(timeout ?? 60, 60) * 1000;
+		expect(delays[0]!.some((delay) => delay > homeMs - 1000 && delay <= homeMs)).toBe(true);
+		if (timeout === undefined) {
+			expect(delays[1]!.filter((delay) => delay >= 1000)).toEqual([10_000]);
+		} else {
+			expect(delays[1]!.some((delay) => delay > timeout * 1000 - 1000 && delay <= timeout * 1000)).toBe(true);
+		}
+	} finally {
+		timers.mockRestore();
+	}
 });
 
 describe("slice 2 remote bash", () => {
@@ -55,7 +79,8 @@ describe("slice 2 remote bash", () => {
 		expect(firstCall.args).toContain("-i");
 		expect(firstCall.args).toContain("-p");
 		expect(firstCall.args).toContain("ControlMaster=auto");
-		expect(firstCall.args.slice(-5, -1)).toEqual(["--", "me@example.invalid", "sh", "-lc"]);
+		expect(firstCall.args.slice(firstCall.args.indexOf("--"), -3)).toEqual(["--", "me@example.invalid", "sh", "-c"]);
+		expect(firstCall.args.at(-3)).toContain("exec sh -lc");
 		expect(remoteShellScript(firstCall.args)).toBe("cd '/srv/app' && printf ok");
 	});
 
@@ -172,7 +197,7 @@ describe("slice 2 remote bash", () => {
 		controller.abort();
 
 		await expect(pending).rejects.toThrow(/aborted/);
-		expect(spawn.children[0]!.killedWith).toBe("SIGTERM");
+		expect(spawn.children[0]!.killedWith).toBe("SIGKILL");
 	});
 
 	test("wildcard session runs one aggregated batch across direct child sessions", async () => {

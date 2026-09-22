@@ -319,7 +319,9 @@ Default behavior:
 - run commands through deterministic `sh -lc` with a safely quoted `cd "$remote_cwd" && <command>` wrapper
 - return stdout/stderr and exit code
 - support `timeout` in seconds for the overall command
-- support remote-only `connect_timeout` in seconds by passing OpenSSH `ConnectTimeout`; this bounds SSH handshakes separately from command runtime
+- support remote-only `connect_timeout` in seconds, default 10, with both OpenSSH `ConnectTimeout` and a local startup deadline; clear the local startup deadline on the remote execution acknowledgement, not on arbitrary banner/output bytes
+- do not impose a default runtime limit on an acknowledged bash command, including silent commands
+- bound uncached bash `$HOME` discovery separately to 60 seconds, preserving a tighter positive command `timeout`; the requested command retains its original timeout setting
 - stream/truncate output like Pi bash where practical for exact sessions
 - if output is too large, save full output to a local temp file and report the path; normal Pi `read` can inspect it
 - for `session: "prefix/*"`, expand direct child sessions under `prefix`; do not include nested descendants or the prefix session itself
@@ -339,7 +341,7 @@ Implementation should use local subprocess execution of `ssh`.
 Expected shape:
 
 ```ts
-ssh [...ssh_args] [port/options] -S <managed-socket-path> <target> -- <remote command>
+ssh [managed safety/control options] [...ssh_args] [port] -- <target> <remote command>
 ```
 
 Requirements:
@@ -353,8 +355,15 @@ Requirements:
 - inject extension-owned ControlMaster/ControlPath settings with default `ControlPersist=60s`
 - quote remote commands deliberately when shell execution is required
 - if ControlMaster/ControlPath is unsupported by a remote setup, retry plain `ssh` when practical and report `socket: "unavailable"` in details, or return a clear error
-- propagate cancellation via Pi's tool abort signal
-- kill local subprocesses on abort/timeout
+- use a 10-second local startup deadline per attempt, including control-socket negotiation; pass `ConnectTimeout`, `ConnectionAttempts=1`, `BatchMode=yes`, `ServerAliveInterval=15`, and `ServerAliveCountMax=3` before user options so safety settings cannot be weakened by `ssh_args` or SSH config
+- acknowledge remote execution with a private, per-attempt stderr marker before `sh -lc`; strip the marker across arbitrary byte boundaries on stderr or PTY-merged stdout without altering caller output
+- retry recognized connection/control errors only before execution acknowledgement and before stdout; do not replay silent commands after acknowledgement, nor retry after local timeout or cancellation
+- share a supplied command deadline across all attempts in one transport invocation; each route has at most one controlled and one plain attempt, and plain fallback explicitly disables ControlMaster/ControlPath/ControlPersist
+- file/search `$HOME` discovery and each Python helper have a 60-second deadline across retries and execution; a multi-step tool can have several separately bounded helpers
+- propagate Pi's tool abort signal to every file/search helper, retaining it on the remote context even when `$HOME` was already cached; pre-aborted calls must not spawn SSH
+- on abort/timeout/callback failure, signal the local process group with SIGTERM, escalate to SIGKILL after 1 second, and settle independently of child `close`; ignore late output
+- after child `exit`, allow at most 1 second for pipes to close before initiating the same cleanup; this does not bound a running remote command
+- local SSH cleanup does not guarantee termination or rollback of remote work; deadlines are subject to event-loop scheduling, and independently invoked SSH/SCP/SFTP commands are outside these guarantees
 - update `lastUsedAt` on successful tool use
 
 ## 11. Output persistence

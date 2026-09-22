@@ -163,9 +163,10 @@ export class RemoteContext {
 		public session: RuntimeSession,
 		readonly spawnSsh: SpawnSsh | undefined,
 		readonly cwd: string,
+		private readonly signal?: AbortSignal,
 	) {}
 
-	async runPython(op: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+	async runPython(op: string, args: Record<string, unknown>, signal: AbortSignal | undefined = this.signal): Promise<unknown> {
 		const payload = Buffer.from(JSON.stringify({ op, ...args }), "utf8").toString("base64");
 		const stdoutChunks: Buffer[] = [];
 		const stderrChunks: Buffer[] = [];
@@ -257,7 +258,7 @@ export async function createRemoteContext(manager: SessionManager, sessionPath: 
 	}
 	const remoteCwd = session.remote_cwd;
 	if (remoteCwd === undefined) throw new Error(`SSH session "${session.path}" is missing remote_cwd.`);
-	return new RemoteContext(manager, session, spawnSsh, remoteCwd);
+	return new RemoteContext(manager, session, spawnSsh, remoteCwd, signal);
 }
 
 async function remoteExistingPrefix(remote: RemoteContext, remotePath: string): Promise<string | undefined> {
@@ -285,7 +286,9 @@ function withoutSession<T extends { session?: string }>(params: T): Omit<T, "ses
 }
 
 function sshOptions(options: Omit<SshRunOptions, "timeout" | "signal"> & { signal?: AbortSignal | undefined }): SshRunOptions {
-	const result: SshRunOptions = {};
+	// File/search helpers (including HOME resolution) are bounded operations.
+	// Bash uses runRemoteSh directly and has no default command deadline.
+	const result: SshRunOptions = { timeout: 60 };
 	if (options.onData !== undefined) result.onData = options.onData;
 	if (options.onStdout !== undefined) result.onStdout = options.onStdout;
 	if (options.onStderr !== undefined) result.onStderr = options.onStderr;

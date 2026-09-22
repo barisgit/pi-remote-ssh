@@ -227,7 +227,8 @@ class RemoteBashOperations implements BashOperations {
 				chunks.push(data);
 			},
 			signal,
-			timeout,
+			// HOME discovery is setup, not the intentionally unbounded user command.
+			timeout: timeout !== undefined && timeout > 0 ? Math.min(timeout, 60) : 60,
 		})).catch((error: unknown) => {
 			throw createHomeResolutionThrownError(this.currentSession.path, this.currentSession.target, error);
 		});

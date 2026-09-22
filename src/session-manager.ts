@@ -409,7 +409,15 @@ export class SessionManager {
 		try {
 			const raw = await readFile(join(this.lockPath, "owner.json"), "utf8");
 			const metadata = JSON.parse(raw) as LockMetadata;
-			return Date.now() - new Date(metadata.created_at).getTime();
+			const createdAt = typeof metadata.created_at === "string" ? Date.parse(metadata.created_at) : NaN;
+			if (Number.isFinite(createdAt)) return Date.now() - createdAt;
+		} catch {
+			// A crash between mkdir and writing owner.json can leave no usable metadata.
+		}
+
+		try {
+			const info = await lstat(this.lockPath);
+			return info.isDirectory() ? Date.now() - info.mtimeMs : undefined;
 		} catch {
 			return undefined;
 		}
