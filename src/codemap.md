@@ -45,6 +45,6 @@ Pi extension that adds named SSH sessions and remote-aware tool variants. Lets a
 ## Integration
 
 - **Pi extension API** — `index.ts` exports a default function that receives `ExtensionAPI` and registers tools.
-- **Peer dependencies** — `@mariozechner/pi-coding-agent` (tool definitions, `defineTool`, base read/write/edit/find/grep/ls/bash tools) and `@mariozechner/pi-ai` (Type schema). Custom lifecycle views return `Text` nodes from `@mariozechner/pi-tui`.
+- **Peer dependencies** — `@earendil-works/pi-coding-agent` (tool definitions, `defineTool`, base read/write/edit/find/grep/ls/bash tools) and `@earendil-works/pi-ai` (Type schema). Custom lifecycle views return `Text` nodes from `@earendil-works/pi-tui`.
 - **OpenSSH** — All remote execution shells out to `ssh`; no libssh or JS SSH library. Relies on system SSH config, keys, agent forwarding.
 - **State layout** — `~/.pi/remote-ssh/sessions.json` (registry), `sessions.lock` (advisory lock), `sockets/` (mirrored socket paths), `logs/` (reserved).

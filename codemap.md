@@ -32,8 +32,8 @@ The three session lifecycle tools use custom self-rendering hooks wired by `src/
 
 ## Integration
 
-- Pi extension APIs from `@mariozechner/pi-coding-agent`
-- Type schemas from `@mariozechner/pi-ai`
-- TUI `Text` rendering from `@mariozechner/pi-tui`
+- Pi extension APIs from `@earendil-works/pi-coding-agent`
+- Type schemas from `@earendil-works/pi-ai`
+- TUI `Text` rendering from `@earendil-works/pi-tui`
 - Local OpenSSH client for all remote transport
 - `tests/` provides Bun coverage for registry, SSH/bash, remote file, and remote search behavior

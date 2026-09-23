@@ -1,4 +1,4 @@
-import { Type } from "@mariozechner/pi-ai";
+import { Type } from "@earendil-works/pi-ai";
 import {
 	createEditToolDefinition,
 	createReadToolDefinition,
@@ -7,7 +7,7 @@ import {
 	type EditToolDetails,
 	type ReadOperations,
 	type WriteOperations,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
 import { getRemoteSshStateDir } from "./config.js";
 import { renderArgsWithRemotePath } from "./remote-render.js";

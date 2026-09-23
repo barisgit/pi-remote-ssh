@@ -1,5 +1,5 @@
-import { Type } from "@mariozechner/pi-ai";
-import { defineTool, type ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
+import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { getRemoteSshSocketDir, getRemoteSshStateDir } from "./config.js";
 import { createRemoteAwareBashTool } from "./bash.js";
 import { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "./remote-files.js";

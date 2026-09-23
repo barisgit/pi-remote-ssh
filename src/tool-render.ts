@@ -1,4 +1,4 @@
-import { Text } from "@mariozechner/pi-tui";
+import { Text } from "@earendil-works/pi-tui";
 
 type ToolKind = "create" | "list" | "delete";
 type Theme = { fg(color: string, text: string): string; bold(text: string): string };

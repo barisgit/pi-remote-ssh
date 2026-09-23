@@ -1,4 +1,4 @@
-import { Type } from "@mariozechner/pi-ai";
+import { Type } from "@earendil-works/pi-ai";
 import {
 	createFindToolDefinition,
 	createGrepToolDefinition,
@@ -8,7 +8,7 @@ import {
 	type FindOperations,
 	type GrepToolDetails,
 	type LsOperations,
-} from "@mariozechner/pi-coding-agent";
+} from "@earendil-works/pi-coding-agent";
 import { getRemoteSshStateDir } from "./config.js";
 import { createRemoteContext, remoteDetails, resolveRemotePath, type RemoteContext } from "./remote-files.js";
 import { renderArgsWithRemotePath } from "./remote-render.js";

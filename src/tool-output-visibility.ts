@@ -2,8 +2,8 @@ import {
 	ToolExecutionComponent,
 	keyHint,
 	type ToolDefinition,
-} from "@mariozechner/pi-coding-agent";
-import { Container, Spacer, Text, truncateToWidth, visibleWidth, type Component } from "@mariozechner/pi-tui";
+} from "@earendil-works/pi-coding-agent";
+import { Container, Spacer, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { isAbsolute, relative } from "node:path";
 
 type ThemeLike = {

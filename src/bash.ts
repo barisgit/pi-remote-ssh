@@ -1,5 +1,5 @@
-import { Type } from "@mariozechner/pi-ai";
-import { createBashToolDefinition, type BashOperations, type BashToolDetails } from "@mariozechner/pi-coding-agent";
+import { Type } from "@earendil-works/pi-ai";
+import { createBashToolDefinition, type BashOperations, type BashToolDetails } from "@earendil-works/pi-coding-agent";
 import { getRemoteSshStateDir } from "./config.js";
 import { renderArgsWithRemoteCommand } from "./remote-render.js";
 import { SessionManager, type RuntimeSession } from "./session-manager.js";

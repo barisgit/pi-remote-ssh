@@ -3,7 +3,7 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createEditToolDefinition, initTheme, ToolExecutionComponent } from "@mariozechner/pi-coding-agent";
+import { createEditToolDefinition, initTheme, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import { createRemoteContext, createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "../src/remote-files.js";
 import { SessionManager } from "../src/session-manager.js";
 import type { SpawnSsh } from "../src/ssh.js";
