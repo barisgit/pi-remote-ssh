@@ -1,0 +1,38 @@
+ LINE-18
+ LINE-19
+ LINE-20
+ LINE-21
+ LINE-22
+ LINE-23
+ LINE-24
+ LINE-25
+ LINE-26
+ LINE-27
+ LINE-28
+ LINE-29
+ LINE-30
+ LINE-31
+ LINE-32
+ LINE-33
+ LINE-34
+ LINE-35
+ LINE-36
+ LINE-37
+ LINE-38
+ LINE-39
+ LINE-40
+
+ Took 6.0s
+
+
+ Tool output: collapsed
+
+ FIXTURE COMPLETE local-bash
+
+ Tool output: expanded
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+~/Programming_local/Projects/pi-extensions/pi-remote-ssh (main)
+9.9%/33k (auto)                                                   (visibility-fixture) deterministic

@@ -1,0 +1,38 @@
+ and loaded resources.
+
+ Pi can explain its own features and
+ look up its docs. Ask it how to use or
+ extend Pi.
+
+[Extensions]
+  fixture.ts, src
+
+
+ Warning: tmux extended-keys is off.
+ Modified Enter keys may not work. Add
+ `set -g extended-keys on` to
+ ~/.tmux.conf and restart tmux.
+
+
+ consecutive
+
+
+ ○ Read: evidence/tool- [ctrl+o expand]
+
+ ○ Read: evidence/tool- [ctrl+o expand]
+
+ ○ Ls: src [ctrl+o expand]
+
+ ○ Grep: "ALPHA" eviden [ctrl+o expand]
+
+ ○ Find: index.ts [ctrl+o expand]
+
+ FIXTURE COMPLETE consecutive
+
+ Tool output: collapsed
+
+────────────────────────────────────────
+
+────────────────────────────────────────
+~/Programming_local/Projects/pi-exten...
+9.9%/33k (auto)            deterministic

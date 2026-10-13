@@ -1,0 +1,38 @@
+
+ [38;2;228;138;122m[48;2;79;142;179m▀[49m▀█[39m  [38;2;126;136;142mv1.2.0[39m
+ [38;2;79;142;179m█▀[39m [38;2;234;182;93m█[39m [38;2;126;136;142mescape[38;2;157;165;169m interrupt · [38;2;126;136;142mctrl+c/ctrl+d[38;2;157;165;169m clear/exit · [38;2;126;136;142m/[38;2;157;165;169m commands · [38;2;126;136;142m![38;2;157;165;169m bash · [38;2;126;136;142mctrl+o[38;2;157;165;169m more[39m
+ [38;2;126;136;142mPress ctrl+o to show full startup help and loaded resources.[39m
+
+ [38;2;126;136;142mPi can explain its own features and look up its docs. Ask it how to use or extend Pi.[39m
+
+[38;2;205;154;34m[Extensions][39m
+[38;2;126;136;142m  fixture.ts, src[39m
+
+
+ [38;2;205;154;34mWarning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+[39m [38;2;205;154;34mon` to ~/.tmux.conf and restart tmux.[39m
+
+[48;2;33;59;73m
+ [38;2;222;224;225mremote-bash[39m
+
+
+[48;2;37;65;49m
+ [1m[38;2;222;224;225m$ session=personal-servers/yocto-builder printf 'RUNNING fixture\n'; sleep 6; printf 'REMOTE
+[0m[48;2;37;65;49m [1m[38;2;222;224;225mfixture complete\n'[0m[38;2;157;165;169m[48;2;37;65;49m (timeout 25s)[39m
+
+ [38;2;157;165;169mRUNNING fixture[39m
+ [38;2;157;165;169mREMOTE fixture complete[39m
+
+ [38;2;157;165;169mTook 6.7s[39m
+
+
+[49m [38;2;126;136;142mTool output: collapsed[39m
+
+ FIXTURE COMPLETE remote-bash
+
+
+[38;2;108;118;123m────────────────────────────────────────────────────────────────────────────────────────────────────
+[7m[39m [0m
+[38;2;108;118;123m────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;2;126;136;142m~/Programming_local/Projects/pi-extensions/pi-remote-ssh (main)[39m
+[38;2;126;136;142m9.5%/33k (auto)                                                   (visibility-fixture) deterministic

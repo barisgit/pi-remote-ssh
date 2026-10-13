@@ -1,0 +1,38 @@
+ns/pi-remote-ssh/src
+
+
+ Warning: tmux extended-keys is off.
+ Modified Enter keys may not work. Add
+ `set -g extended-keys on` to
+ ~/.tmux.conf and restart tmux.
+
+
+ local-bash
+
+
+
+ $ printf 'RUNNING fixture\n'; sleep 6;
+ printf
+ 'LINE-01\nLINE-02\nLINE-03\nLINE-04\nL
+ INE-05\nLINE-06\nLINE-07\nLINE-08\nLIN
+ E-09\nLINE-10\nLINE-11\nLINE-12\nLINE-
+ 13\nLINE-14\nLINE-15\nLINE-16\nLINE-17
+ \nLINE-18\nLINE-19\nLINE-20\nLINE-21\n
+ LINE-22\nLINE-23\nLINE-24\nLINE-25\nLI
+ NE-26\nLINE-27\nLINE-28\nLINE-29\nLINE
+ -30\nLINE-31\nLINE-32\nLINE-33\nLINE-3
+ 4\nLINE-35\nLINE-36\nLINE-37\nLINE-38\
+ nLINE-39\nLINE-40\n'
+
+ RUNNING fixture
+
+ Elapsed 1.2s
+
+
+ Tool output: expanded
+
+── ⠏ Working ───────────────────────────
+
+────────────────────────────────────────
+~/Programming_local/Projects/pi-exten...
+9.7%/33k (auto)            deterministic

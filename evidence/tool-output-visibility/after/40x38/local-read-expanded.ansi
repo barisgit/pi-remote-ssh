@@ -1,0 +1,38 @@
+[38;2;126;136;142msibility/fixture.ts[39m
+[38;2;126;136;142m
+~/Programming_local/Projects/pi-extensio
+ns/pi-remote-ssh/src
+
+
+[39m [38;2;205;154;34mWarning: tmux extended-keys is off.
+[39m [38;2;205;154;34mModified Enter keys may not work. Add
+[39m [38;2;205;154;34m`set -g extended-keys on` to
+[39m [38;2;205;154;34m~/.tmux.conf and restart tmux.[39m
+
+[48;2;33;59;73m
+ [38;2;222;224;225mlocal-read[39m
+
+
+[48;2;37;65;49m
+ [1m[38;2;222;224;225mread[0m[48;2;37;65;49m
+ [38;2;167;152;215mevidence/tool-output-visibility/sample
+[39m [38;2;167;152;215m.txt[39m
+
+ [38;2;157;165;169mALPHA fixture line 1[39m
+ [38;2;157;165;169mBETA fixture line 2[39m
+ [38;2;157;165;169mGAMMA fixture line 3[39m
+ [38;2;157;165;169m> DCP reminder[39m
+ [38;2;157;165;169m> Fixture reminder remains visible.[39m
+
+
+[49m [38;2;126;136;142mTool output: collapsed[39m
+
+ FIXTURE COMPLETE local-read
+
+ [38;2;126;136;142mTool output: expanded[39m
+
+[38;2;108;118;123m────────────────────────────────────────
+[7m[39m [0m
+[38;2;108;118;123m────────────────────────────────────────
+[38;2;126;136;142m~/Programming_local/Projects/pi-exten...
+9.5%/33k (auto)            deterministic

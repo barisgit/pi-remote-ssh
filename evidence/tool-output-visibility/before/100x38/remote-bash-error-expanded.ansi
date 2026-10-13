@@ -1,0 +1,38 @@
+
+[38;2;205;154;34m[Extensions][39m
+  [38;2;167;152;215mpath[39m
+[38;2;126;136;142m
+~/Programming_local/Projects/pi-extensions/pi-remote-ssh/evidence/tool-output-visibility/baseline-so
+urce[39m
+[38;2;126;136;142m
+~/Programming_local/Projects/pi-extensions/pi-remote-ssh/evidence/tool-output-visibility/fixture.ts[39m
+
+
+ [38;2;205;154;34mWarning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+[39m [38;2;205;154;34mon` to ~/.tmux.conf and restart tmux.[39m
+
+[48;2;33;59;73m
+ [38;2;222;224;225mremote-bash-error[39m
+
+
+[48;2;91;40;42m
+ [1m[38;2;222;224;225m$ session=personal-servers/yocto-builder printf 'fixture intentional error\n' >&2; exit 7[0m[38;2;157;165;169m[48;2;91;40;42m (timeout
+[39m [38;2;157;165;169m25s)[39m
+
+ [38;2;157;165;169mfixture intentional error[39m
+
+
+ [38;2;157;165;169mCommand exited with code 7[39m
+
+ [38;2;157;165;169mTook 0.9s[39m
+
+
+[49m FIXTURE COMPLETE remote-bash-error
+
+ [38;2;126;136;142mTool output: expanded[39m
+
+[38;2;108;118;123m────────────────────────────────────────────────────────────────────────────────────────────────────
+[7m[39m [0m
+[38;2;108;118;123m────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;2;126;136;142m~/Programming_local/Projects/pi-extensions/pi-remote-ssh (main)[39m
+[38;2;126;136;142m9.5%/33k (auto)                                                   (visibility-fixture) deterministic

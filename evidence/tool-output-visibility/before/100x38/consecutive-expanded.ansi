@@ -1,0 +1,38 @@
+[48;2;37;65;49m
+ [1m[38;2;222;224;225mls[0m[48;2;37;65;49m [38;2;167;152;215msrc[39m
+
+ [38;2;157;165;169mbash.ts[39m
+ [38;2;157;165;169mconfig.ts[39m
+ [38;2;157;165;169mindex.ts[39m
+ [38;2;157;165;169mpath-safety.ts[39m
+ [38;2;157;165;169mremote-files.ts[39m
+ [38;2;157;165;169mremote-render.ts[39m
+ [38;2;157;165;169mremote-search.ts[39m
+ [38;2;157;165;169msession-manager.ts[39m
+ [38;2;157;165;169mssh.ts[39m
+ [38;2;157;165;169mtool-output-visibility.ts[39m
+ [38;2;157;165;169mtool-render.ts[39m
+ [38;2;157;165;169mwrite-enhancements.ts[39m
+
+
+
+ [1m[38;2;222;224;225mgrep[0m[48;2;37;65;49m [38;2;167;152;215m/ALPHA/[38;2;157;165;169m in evidence/tool-output-visibility/sample.txt[39m
+
+ [38;2;157;165;169msample.txt:1: ALPHA fixture line 1[39m
+
+
+
+ [1m[38;2;222;224;225mfind[0m[48;2;37;65;49m [38;2;167;152;215mindex.ts[38;2;157;165;169m in src[39m
+
+ [38;2;157;165;169mindex.ts[39m
+
+
+[49m FIXTURE COMPLETE consecutive
+
+ [38;2;126;136;142mTool output: expanded[39m
+
+[38;2;108;118;123m────────────────────────────────────────────────────────────────────────────────────────────────────
+[7m[39m [0m
+[38;2;108;118;123m────────────────────────────────────────────────────────────────────────────────────────────────────
+[38;2;126;136;142m~/Programming_local/Projects/pi-extensions/pi-remote-ssh (main)[39m
+[38;2;126;136;142m9.9%/33k (auto)                                                   (visibility-fixture) deterministic

@@ -1,0 +1,23 @@
+{
+  "phase": "before",
+  "viewport": [
+    100,
+    38
+  ],
+  "hostVersion": "1.2.0",
+  "command": "env -u PI_PACKAGE_DIR -u FO_CODING_AGENT_DIR /Users/blaz/.bun/bin/pi --no-extensions -e /Users/blaz/Programming_local/Projects/pi-extensions/pi-remote-ssh/evidence/tool-output-visibility/baseline-source/index.ts -e /Users/blaz/Programming_local/Projects/pi-extensions/pi-remote-ssh/evidence/tool-output-visibility/fixture.ts --provider visibility-fixture --model deterministic --no-session --no-mcp --offline --no-skills --no-prompt-templates --no-context-files",
+  "sourceHashes": {
+    "evidence/tool-output-visibility/baseline-source/write-enhancements.ts": "e14c712c68924f5052752cfd290870861b89f3f0b03a88eb513cd6336a29e5ab",
+    "evidence/tool-output-visibility/baseline-source/remote-render.ts": "26f346ebac865191e0ade35415fef4183bfd63ad4ded335f84f76a5b3a9efbbd",
+    "evidence/tool-output-visibility/baseline-source/path-safety.ts": "503e2dc1cd024cb908532d90fb7c2eded79c86353b18437246c83a29d7abac69",
+    "evidence/tool-output-visibility/baseline-source/ssh.ts": "172854310f0584f28efaeaf1f164d7aeaf5772e796a19dd8869524c054dd95f8",
+    "evidence/tool-output-visibility/baseline-source/tool-render.ts": "e22ec9589d210a7e827d12a0660c2e15124f23c2e2f3c5e2f855935e39d23eb1",
+    "evidence/tool-output-visibility/baseline-source/tool-output-visibility.ts": "439d9d10ae3b0d9ad729b0c92872a4045e09a06b0306ea3af2844ef5423ee57f",
+    "evidence/tool-output-visibility/baseline-source/remote-search.ts": "94ad1c5c03dc4edd71eb202277f6dd05f28073db346b797069bc956226a0306d",
+    "evidence/tool-output-visibility/baseline-source/session-manager.ts": "882ab3d1c7abe49325f49a221001c3a3bd2738acc4a6a1784237f80273add6c7",
+    "evidence/tool-output-visibility/baseline-source/bash.ts": "09905d2130b3d338d857cc700200bf8b35d48024ea4b9bd1b3244dce6dbce1bf",
+    "evidence/tool-output-visibility/baseline-source/index.ts": "a76dcb2572fbb2de9285f03b6acc4231b9474be069a1eb387dd72b319c8eb51d",
+    "evidence/tool-output-visibility/baseline-source/remote-files.ts": "007e3114eec9974f9271410bd621dbdee6504b482e745e89091adbebafd6ac1f",
+    "evidence/tool-output-visibility/baseline-source/config.ts": "2952df42a2891fbc7b504ab4544bbb371a77b810e3763aa4853f28d40fc1b43c"
+  }
+}

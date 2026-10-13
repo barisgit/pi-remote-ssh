@@ -1,0 +1,38 @@
+
+~/Programming_local/Projects/pi-extensio
+ns/pi-remote-ssh/evidence/tool-output-vi
+sibility/fixture.ts
+
+
+ Warning: tmux extended-keys is off.
+ Modified Enter keys may not work. Add
+ `set -g extended-keys on` to
+ ~/.tmux.conf and restart tmux.
+
+
+ local-read
+
+
+
+ read
+ evidence/tool-output-visibility/sample
+ .txt
+
+ ALPHA fixture line 1
+ BETA fixture line 2
+ GAMMA fixture line 3
+ > DCP reminder
+ > Fixture reminder remains visible.
+
+
+ Tool output: collapsed
+
+ FIXTURE COMPLETE local-read
+
+ Tool output: expanded
+
+────────────────────────────────────────
+
+────────────────────────────────────────
+~/Programming_local/Projects/pi-exten...
+9.5%/33k (auto)            deterministic

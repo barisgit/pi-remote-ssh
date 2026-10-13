@@ -1,0 +1,38 @@
+
+
+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+ on` to ~/.tmux.conf and restart tmux.
+
+
+ remote-read
+
+
+
+ read /etc/os-release [session: personal-servers/yocto-builder]
+
+ PRETTY_NAME="Ubuntu 24.04.4 LTS"
+ NAME="Ubuntu"
+ VERSION_ID="24.04"
+ VERSION="24.04.4 LTS (Noble Numbat)"
+ VERSION_CODENAME=noble
+ ID=ubuntu
+ ID_LIKE=debian
+ HOME_URL="https://www.ubuntu.com/"
+ SUPPORT_URL="https://help.ubuntu.com/"
+ BUG_REPORT_URL="https://bugs.launchpad.net/ubuntu/"
+ PRIVACY_POLICY_URL="https://www.ubuntu.com/legal/terms-and-policies/privacy-policy"
+ UBUNTU_CODENAME=noble
+ LOGO=ubuntu-logo
+
+
+ Tool output: collapsed
+
+ FIXTURE COMPLETE remote-read
+
+ Tool output: expanded
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+~/Programming_local/Projects/pi-extensions/pi-remote-ssh (main)
+9.7%/33k (auto)                                                   (visibility-fixture) deterministic

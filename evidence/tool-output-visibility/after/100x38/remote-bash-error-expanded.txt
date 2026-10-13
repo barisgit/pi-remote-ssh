@@ -1,0 +1,38 @@
+
+ Pi can explain its own features and look up its docs. Ask it how to use or extend Pi.
+
+[Extensions]
+  path
+
+~/Programming_local/Projects/pi-extensions/pi-remote-ssh/evidence/tool-output-visibility/fixture.ts
+    ~/Programming_local/Projects/pi-extensions/pi-remote-ssh/src
+
+
+ Warning: tmux extended-keys is off. Modified Enter keys may not work. Add `set -g extended-keys
+ on` to ~/.tmux.conf and restart tmux.
+
+
+ remote-bash-error
+
+
+
+ $ session=personal-servers/yocto-builder printf 'fixture intentional error\n' >&2; exit 7 (timeout
+ 25s)
+
+ fixture intentional error
+
+
+ Command exited with code 7
+
+ Took 0.6s
+
+
+ FIXTURE COMPLETE remote-bash-error
+
+ Tool output: expanded
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+
+────────────────────────────────────────────────────────────────────────────────────────────────────
+~/Programming_local/Projects/pi-extensions/pi-remote-ssh (main)
+9.5%/33k (auto)                                                   (visibility-fixture) deterministic
