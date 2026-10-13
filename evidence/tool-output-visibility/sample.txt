@@ -1,5 +1,0 @@
-ALPHA fixture line 1
-BETA fixture line 2
-GAMMA fixture line 3
-<dcp-id>fixture-hidden</dcp-id>
-<dcp-system-reminder>Fixture reminder remains visible.</dcp-system-reminder>
