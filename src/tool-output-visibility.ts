@@ -99,7 +99,8 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 			}
 
 			if (context.isError) {
-				return tool.renderResult?.(sanitizedResult, options, theme, context) ?? new Text(theme.fg("error", "failed"), 0, 0);
+				const lastComponent = isHiddenResult(context.lastComponent) ? undefined : context.lastComponent;
+				return tool.renderResult?.(sanitizedResult, options, theme, { ...context, lastComponent }) ?? new Text(theme.fg("error", "failed"), 0, 0);
 			}
 
 			return hiddenResult();

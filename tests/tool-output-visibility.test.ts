@@ -70,6 +70,23 @@ describe("remote tool output visibility", () => {
 		expect(second.render(80).join("\n")).toContain("second body");
 	});
 
+	test("error collapse restores the result renderer's own component", () => {
+		const tool = withCompactHiddenResult({
+			name: "read", label: "read", description: "test tool", parameters: {},
+			renderCall: () => new Text("call", 0, 0),
+			renderResult: (_result: unknown, _options: unknown, _theme: unknown, context: { lastComponent?: Text }) => {
+				const text = context.lastComponent ?? new Text("", 0, 0);
+				text.setText("ERROR WITH WARNING");
+				return text;
+			},
+		});
+		const component = new ToolExecutionComponent("read", "error", {}, {}, tool as never, ui, process.cwd());
+		component.updateResult({ content: [{ type: "text", text: "generic error" }], isError: true } as never);
+		component.setExpanded(true);
+		component.setExpanded(false);
+		expect(component.render(80).join("\n")).toContain("ERROR WITH WARNING");
+	});
+
 	test("registered read-like tools use compact self rendering and native-looking framing when expanded", () => {
 		const definitions = new Map<string, any>();
 		remoteSshExtension({ registerTool: (definition: any) => definitions.set(definition.name, definition) } as never);
