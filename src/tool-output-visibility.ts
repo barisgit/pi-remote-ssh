@@ -3,7 +3,7 @@ import {
 	keyHint,
 	type ToolDefinition,
 } from "@earendil-works/pi-coding-agent";
-import { Container, Spacer, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
+import { Box, Container, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { isAbsolute, relative } from "node:path";
 
 type ThemeLike = {
@@ -25,20 +25,13 @@ type StatusLineOptions = {
 	meta?: string[];
 };
 
-type ContainerPatched = Container & Record<PropertyKey, any>;
 type ToolExecutionComponentPatched = Record<PropertyKey, any>;
 
-const DYNAMIC_EXPANDED_SHELL_PATCH_KEY = Symbol.for("pi.toolOutputVisibility.dynamicExpandedShellPatched");
-const DYNAMIC_EXPANDED_SHELL_PATCH_VERSION = 5;
-const DYNAMIC_EXPANDED_SHELL_KEY = Symbol.for("pi.toolOutputVisibility.dynamicExpandedShell");
-const EXPANDED_RENDER_SHELL_KEY = Symbol.for("pi.toolOutputVisibility.expandedRenderShell");
-const COMPACT_PARENT_KEY = Symbol.for("pi.toolOutputVisibility.compactParent");
-const COMPACT_BLOCK_SPACER_KEY = Symbol.for("pi.toolOutputVisibility.compactBlockSpacer");
 const COMPACT_HIDDEN_RESULT_KEY = Symbol.for("pi.toolOutputVisibility.compactHiddenResult");
-const ORIGINAL_ADD_CHILD_KEY = Symbol.for("pi.toolOutputVisibility.originalAddChild");
 const ORIGINAL_GET_TEXT_OUTPUT_KEY = Symbol.for("pi.toolOutputVisibility.originalGetTextOutput");
-const ORIGINAL_GET_RENDER_SHELL_KEY = Symbol.for("pi.toolOutputVisibility.originalGetRenderShell");
-const ORIGINAL_UPDATE_DISPLAY_KEY = Symbol.for("pi.toolOutputVisibility.originalUpdateDisplay");
+
+// Call and result renderers share one box, but retain their own lastComponent contracts.
+type ExpandedFrame = { box: Box; call: Component; result: Component | undefined };
 
 const COLLAPSED_PREVIEW_HEAD_LINES = 12;
 const COLLAPSED_PREVIEW_TAIL_LINES = 12;
@@ -49,25 +42,33 @@ const STATUS_PREFIX_WIDTH = 20;
 const SESSION_META_MAX_WIDTH = 36;
 const HIDDEN_XML_TAGS = ["dcp-id", "dcp-owner"];
 
+/** Apply previews and DCP sanitization to every native text fallback, including renderer failures. */
 export function installToolOutputVisibility() {
-	patchContainerParents();
 	patchGenericFallbackPreview();
-	patchDynamicExpandedShell();
 }
 
+/** Keep collapsed calls compact and draw Pi's native-style box when expanded. */
 export function withCompactHiddenResult<TDefinition>(definition: TDefinition): TDefinition {
 	const tool = definition as ToolDefinition<any, any, any>;
-	return {
+	const frames = new WeakMap<object, ExpandedFrame>();
+	const wrapped: typeof tool = {
 		...tool,
-		[DYNAMIC_EXPANDED_SHELL_KEY]: true,
-		[EXPANDED_RENDER_SHELL_KEY]: tool.renderShell ?? "default",
 		renderShell: "self",
-		renderCall(args: any, theme: any, context: any) {
+		renderCall(args, theme, context) {
 			if (context.expanded) {
-				const expandedContext = context.lastComponent instanceof DynamicCompactCallText ? { ...context, lastComponent: undefined } : context;
-				return tool.renderCall?.(args, theme, expandedContext) ?? ((expandedContext.lastComponent as Text | undefined) ?? new Text("", 0, 0));
+				const previous = frames.get(context.state);
+				const lastComponent = previous?.call ?? (context.lastComponent instanceof DynamicCompactCallText ? undefined : context.lastComponent);
+				const call = tool.renderCall?.(args, theme, { ...context, lastComponent }) ?? lastComponent ?? new Text("", 0, 0);
+				if (tool.renderShell === "self") return call;
+
+				const bg = context.isPartial ? "toolPendingBg" : context.isError ? "toolErrorBg" : "toolSuccessBg";
+				const box = new Box(context.outputPad, 1, (text) => theme.bg(bg, text));
+				box.addChild(call);
+				frames.set(context.state, { box, call, result: previous?.result });
+				return box;
 			}
 
+			frames.delete(context.state);
 			const compact = context.lastComponent instanceof DynamicCompactCallText ? context.lastComponent : new DynamicCompactCallText();
 			compact.setState({
 				name: tool.name,
@@ -78,11 +79,19 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 			});
 			return compact;
 		},
-		renderResult(result: any, options: any, theme: any, context: any) {
+		renderResult(result, options, theme, context) {
 			const sanitizedResult = sanitizeToolResultPayload(result);
 			if (options.expanded) {
-				const expandedContext = context.lastComponent?.[COMPACT_HIDDEN_RESULT_KEY] ? { ...context, lastComponent: undefined } : context;
-				return tool.renderResult?.(sanitizedResult, options, theme, expandedContext) ?? new Container();
+				const frame = frames.get(context.state);
+				const lastComponent = frame?.result ?? (isHiddenResult(context.lastComponent) ? undefined : context.lastComponent);
+				const rendered = tool.renderResult?.(sanitizedResult, options, theme, { ...context, lastComponent }) ?? new Container();
+				if (!frame) return rendered;
+
+				// Pi invokes renderCall before renderResult on every update. Returning the
+				// box from the call slot gives both slots one background and padding.
+				frame.box.addChild(rendered);
+				frame.result = rendered;
+				return hiddenResult();
 			}
 
 			if (options.isPartial) {
@@ -93,17 +102,20 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 				return tool.renderResult?.(sanitizedResult, options, theme, context) ?? new Text(theme.fg("error", "failed"), 0, 0);
 			}
 
-			const hidden = new Container() as ContainerPatched;
-			hidden[COMPACT_HIDDEN_RESULT_KEY] = true;
-			return hidden;
+			return hiddenResult();
 		},
-	} as TDefinition;
+	};
+	return wrapped as TDefinition;
 }
 
-function createCompactBlockSpacer() {
-	const spacer = new Spacer(1) as Spacer & { [COMPACT_BLOCK_SPACER_KEY]?: true };
-	spacer[COMPACT_BLOCK_SPACER_KEY] = true;
-	return spacer;
+function hiddenResult() {
+	const hidden = new Container() as Container & { [COMPACT_HIDDEN_RESULT_KEY]: true };
+	hidden[COMPACT_HIDDEN_RESULT_KEY] = true;
+	return hidden;
+}
+
+function isHiddenResult(component: Component | undefined) {
+	return Boolean((component as (Component & { [COMPACT_HIDDEN_RESULT_KEY]?: true }) | undefined)?.[COMPACT_HIDDEN_RESULT_KEY]);
 }
 
 function truncate(value: string, max = 48) {
@@ -230,83 +242,6 @@ function patchGenericFallbackPreview() {
 		const output = prototype[ORIGINAL_GET_TEXT_OUTPUT_KEY]?.call(this) ?? "";
 		return collapseFallbackOutput(output, Boolean(this.expanded), Boolean(this.isPartial));
 	};
-}
-
-function hasDynamicExpandedShell(component: ToolExecutionComponentPatched) {
-	return Boolean(component.toolDefinition?.[DYNAMIC_EXPANDED_SHELL_KEY]);
-}
-
-function patchContainerParents() {
-	const prototype = Container.prototype as ContainerPatched;
-	if (prototype[ORIGINAL_ADD_CHILD_KEY]) return;
-
-	prototype[ORIGINAL_ADD_CHILD_KEY] = prototype.addChild;
-	prototype.addChild = function patchedAddChild(this: ContainerPatched, child: Component) {
-		(child as Component & { [COMPACT_PARENT_KEY]?: ContainerPatched })[COMPACT_PARENT_KEY] = this;
-		return prototype[ORIGINAL_ADD_CHILD_KEY]?.call(this, child);
-	};
-}
-
-function isCompactToolComponent(child: unknown): child is ToolExecutionComponentPatched {
-	return child instanceof ToolExecutionComponent && hasDynamicExpandedShell(child as ToolExecutionComponentPatched);
-}
-
-function startsCompactToolBlock(component: ToolExecutionComponentPatched) {
-	const siblings = component[COMPACT_PARENT_KEY]?.children ?? [];
-	const index = siblings.indexOf(component);
-	if (index <= 0) return true;
-	return !isCompactToolComponent(siblings[index - 1]);
-}
-
-function syncDynamicShellContainer(component: ToolExecutionComponentPatched) {
-	const renderShell = component.getRenderShell();
-	const desired = renderShell === "self" ? component.selfRenderContainer : component.contentBox;
-	if (!desired) return;
-
-	const imageComponents = component.imageComponents ?? [];
-	if (renderShell === "self") {
-		component.children = startsCompactToolBlock(component) ? [createCompactBlockSpacer(), desired, ...imageComponents] : [desired, ...imageComponents];
-		return;
-	}
-
-	const withoutShells = component.children.filter((child: unknown) => child !== component.selfRenderContainer && child !== component.contentBox);
-	if (withoutShells.length === 0) {
-		component.children = [desired];
-		return;
-	}
-
-	component.children = [withoutShells[0], desired, ...withoutShells.slice(1)];
-}
-
-function patchDynamicExpandedShell() {
-	const prototype = ToolExecutionComponent.prototype as ToolExecutionComponentPatched;
-	if (prototype[DYNAMIC_EXPANDED_SHELL_PATCH_KEY] === DYNAMIC_EXPANDED_SHELL_PATCH_VERSION) return;
-	if (!prototype[ORIGINAL_GET_RENDER_SHELL_KEY]) {
-		prototype[ORIGINAL_GET_RENDER_SHELL_KEY] = prototype.getRenderShell;
-	}
-	prototype.getRenderShell = function patchedGetRenderShell(this: ToolExecutionComponentPatched) {
-		if (!hasDynamicExpandedShell(this)) {
-			return prototype[ORIGINAL_GET_RENDER_SHELL_KEY]?.call(this) ?? "default";
-		}
-
-		if (this.expanded) {
-			return this.toolDefinition?.[EXPANDED_RENDER_SHELL_KEY] ?? "default";
-		}
-
-		return "self";
-	};
-
-	if (!prototype[ORIGINAL_UPDATE_DISPLAY_KEY]) {
-		prototype[ORIGINAL_UPDATE_DISPLAY_KEY] = prototype.updateDisplay;
-	}
-	prototype.updateDisplay = function patchedUpdateDisplay(this: ToolExecutionComponentPatched) {
-		if (hasDynamicExpandedShell(this)) syncDynamicShellContainer(this);
-		const result = prototype[ORIGINAL_UPDATE_DISPLAY_KEY]?.call(this);
-		if (hasDynamicExpandedShell(this)) syncDynamicShellContainer(this);
-		return result;
-	};
-
-	prototype[DYNAMIC_EXPANDED_SHELL_PATCH_KEY] = DYNAMIC_EXPANDED_SHELL_PATCH_VERSION;
 }
 
 function formatPath(value: unknown, max = 48) {
