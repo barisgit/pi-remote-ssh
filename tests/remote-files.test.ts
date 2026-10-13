@@ -4,9 +4,9 @@ import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createEditToolDefinition, initTheme, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
-import { createRemoteContext, createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "../src/remote-files.js";
-import { SessionManager } from "../src/session-manager.js";
-import type { SpawnSsh } from "../src/ssh.js";
+import { createRemoteContext, createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "../src/remote-files.ts";
+import { SessionManager } from "../src/session-manager.ts";
+import type { SpawnSsh } from "../src/ssh.ts";
 
 initTheme("dark", false);
 

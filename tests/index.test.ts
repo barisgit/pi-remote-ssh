@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { formatSessionTree, renderRemoteSshResult } from "../src/tool-render.js";
+import { formatSessionTree, renderRemoteSshResult } from "../src/tool-render.ts";
 
 const theme = {
 	fg: (_color: string, text: string) => text,

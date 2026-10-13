@@ -1,9 +1,9 @@
 import { Type } from "@earendil-works/pi-ai";
 import { createBashToolDefinition, type BashOperations, type BashToolDetails } from "@earendil-works/pi-coding-agent";
-import { getRemoteSshStateDir } from "./config.js";
-import { renderArgsWithRemoteCommand } from "./remote-render.js";
-import { SessionManager, type RuntimeSession } from "./session-manager.js";
-import { createHomeResolutionError, createHomeResolutionThrownError, runRemoteSh, shellQuote, type SpawnSsh, type SshRunResult } from "./ssh.js";
+import { getRemoteSshStateDir } from "./config.ts";
+import { renderArgsWithRemoteCommand } from "./remote-render.ts";
+import { SessionManager, type RuntimeSession } from "./session-manager.ts";
+import { createHomeResolutionError, createHomeResolutionThrownError, runRemoteSh, shellQuote, type SpawnSsh, type SshRunResult } from "./ssh.ts";
 
 export interface RemoteBashDetails extends BashToolDetails {
 	remote?: boolean;

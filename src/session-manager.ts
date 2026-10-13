@@ -9,7 +9,7 @@ import {
 	assertValidSessionPath,
 	assertValidSshArgs,
 	assertValidTarget,
-} from "./path-safety.js";
+} from "./path-safety.ts";
 
 export interface RemoteSshSessionDefinition {
 	targets: string[];

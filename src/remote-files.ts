@@ -9,11 +9,11 @@ import {
 	type WriteOperations,
 } from "@earendil-works/pi-coding-agent";
 import * as path from "node:path";
-import { getRemoteSshStateDir } from "./config.js";
-import { renderArgsWithRemotePath } from "./remote-render.js";
-import { SessionManager, type RuntimeSession } from "./session-manager.js";
-import { createHomeResolutionError, createHomeResolutionThrownError, runRemoteSh, shellQuote, type SpawnSsh, type SshRunOptions } from "./ssh.js";
-import { assertLocalEditableFile, assertRemoteEditableContent, stripHashlinePrefixes } from "./write-enhancements.js";
+import { getRemoteSshStateDir } from "./config.ts";
+import { renderArgsWithRemotePath } from "./remote-render.ts";
+import { SessionManager, type RuntimeSession } from "./session-manager.ts";
+import { createHomeResolutionError, createHomeResolutionThrownError, runRemoteSh, shellQuote, type SpawnSsh, type SshRunOptions } from "./ssh.ts";
+import { assertLocalEditableFile, assertRemoteEditableContent, stripHashlinePrefixes } from "./write-enhancements.ts";
 
 export interface CreateRemoteFileToolOptions {
 	managerFactory?: () => SessionManager;

@@ -1,12 +1,12 @@
 import { Type } from "@earendil-works/pi-ai";
 import { defineTool, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { getRemoteSshSocketDir, getRemoteSshStateDir } from "./config.js";
-import { createRemoteAwareBashTool } from "./bash.js";
-import { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "./remote-files.js";
-import { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "./remote-search.js";
-import { SessionManager, type CreateSessionInput, type ListSessionsInput } from "./session-manager.js";
-import { installToolOutputVisibility, withCompactHiddenResult } from "./tool-output-visibility.js";
-import { renderRemoteSshCall, renderRemoteSshResult } from "./tool-render.js";
+import { getRemoteSshSocketDir, getRemoteSshStateDir } from "./config.ts";
+import { createRemoteAwareBashTool } from "./bash.ts";
+import { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "./remote-files.ts";
+import { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "./remote-search.ts";
+import { SessionManager, type CreateSessionInput, type ListSessionsInput } from "./session-manager.ts";
+import { installToolOutputVisibility, withCompactHiddenResult } from "./tool-output-visibility.ts";
+import { renderRemoteSshCall, renderRemoteSshResult } from "./tool-render.ts";
 
 function createSessionManager(): SessionManager {
 	const stateDir = getRemoteSshStateDir();
@@ -168,9 +168,9 @@ function renderList(entries: Array<{ path: string; type?: "namespace"; target?: 
 		.join("\n");
 }
 
-export { createRemoteAwareBashTool } from "./bash.js";
-export { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "./remote-files.js";
-export { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "./remote-search.js";
-export { getRemoteSshSocketDir, getRemoteSshStateDir } from "./config.js";
-export { SessionManager } from "./session-manager.js";
-export type { CreateSessionInput, ListedSession, RemoteSshSessionDefinition, RuntimeSession, SessionRegistry } from "./session-manager.js";
+export { createRemoteAwareBashTool } from "./bash.ts";
+export { createRemoteAwareEditTool, createRemoteAwareReadTool, createRemoteAwareWriteTool } from "./remote-files.ts";
+export { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "./remote-search.ts";
+export { getRemoteSshSocketDir, getRemoteSshStateDir } from "./config.ts";
+export { SessionManager } from "./session-manager.ts";
+export type { CreateSessionInput, ListedSession, RemoteSshSessionDefinition, RuntimeSession, SessionRegistry } from "./session-manager.ts";

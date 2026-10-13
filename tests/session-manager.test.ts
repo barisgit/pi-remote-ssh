@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, test } from "bun:test";
 import { mkdir, mkdtemp, readdir, readFile, rm, stat, symlink, utimes, writeFile } from "node:fs/promises";
 import { hostname, tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { SessionManager, RegistryParseError, RegistryLockError } from "../src/session-manager.js";
+import { SessionManager, RegistryParseError, RegistryLockError } from "../src/session-manager.ts";
 
 let stateDir: string;
 let manager: SessionManager;

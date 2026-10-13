@@ -3,9 +3,9 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "../src/remote-search.js";
-import { SessionManager } from "../src/session-manager.js";
-import type { SpawnSsh } from "../src/ssh.js";
+import { createRemoteAwareFindTool, createRemoteAwareGrepTool, createRemoteAwareLsTool } from "../src/remote-search.ts";
+import { SessionManager } from "../src/session-manager.ts";
+import type { SpawnSsh } from "../src/ssh.ts";
 
 let stateDir: string;
 let manager: SessionManager;

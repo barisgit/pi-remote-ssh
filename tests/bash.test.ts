@@ -4,9 +4,9 @@ import { existsSync } from "node:fs";
 import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
-import { createRemoteAwareBashTool } from "../src/bash.js";
-import { SessionManager } from "../src/session-manager.js";
-import { runRemoteSh, type SpawnSsh } from "../src/ssh.js";
+import { createRemoteAwareBashTool } from "../src/bash.ts";
+import { SessionManager } from "../src/session-manager.ts";
+import { runRemoteSh, type SpawnSsh } from "../src/ssh.ts";
 
 let stateDir: string;
 let manager: SessionManager;

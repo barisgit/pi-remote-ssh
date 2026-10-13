@@ -4,8 +4,8 @@ import { EventEmitter } from "node:events";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import { SessionManager, type RuntimeSession } from "../src/session-manager.js";
-import { runRemoteSh, shellQuote, type SpawnSsh } from "../src/ssh.js";
+import { SessionManager, type RuntimeSession } from "../src/session-manager.ts";
+import { runRemoteSh, shellQuote, type SpawnSsh } from "../src/ssh.ts";
 
 let stateDir: string;
 let session: RuntimeSession;

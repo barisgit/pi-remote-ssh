@@ -9,11 +9,11 @@ import {
 	type GrepToolDetails,
 	type LsOperations,
 } from "@earendil-works/pi-coding-agent";
-import { getRemoteSshStateDir } from "./config.js";
-import { createRemoteContext, remoteDetails, resolveRemotePath, type RemoteContext } from "./remote-files.js";
-import { renderArgsWithRemotePath } from "./remote-render.js";
-import { SessionManager } from "./session-manager.js";
-import type { SpawnSsh } from "./ssh.js";
+import { getRemoteSshStateDir } from "./config.ts";
+import { createRemoteContext, remoteDetails, resolveRemotePath, type RemoteContext } from "./remote-files.ts";
+import { renderArgsWithRemotePath } from "./remote-render.ts";
+import { SessionManager } from "./session-manager.ts";
+import type { SpawnSsh } from "./ssh.ts";
 
 export interface CreateRemoteSearchToolOptions {
 	managerFactory?: () => SessionManager;

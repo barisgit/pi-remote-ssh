@@ -3,7 +3,7 @@ import type { ChildProcessWithoutNullStreams } from "node:child_process";
 import { mkdir, rm } from "node:fs/promises";
 import { dirname } from "node:path";
 import { randomUUID } from "node:crypto";
-import type { RuntimeSession } from "./session-manager.js";
+import type { RuntimeSession } from "./session-manager.ts";
 
 export interface SshRunOptions {
 	onData?: (data: Buffer) => void;

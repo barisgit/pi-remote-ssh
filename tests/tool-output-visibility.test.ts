@@ -1,8 +1,8 @@
 import { describe, expect, test } from "bun:test";
 import { initTheme, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
 import { Box, Container, Text, visibleWidth } from "@earendil-works/pi-tui";
-import remoteSshExtension from "../src/index.js";
-import { installToolOutputVisibility, withCompactHiddenResult } from "../src/tool-output-visibility.js";
+import remoteSshExtension from "../src/index.ts";
+import { installToolOutputVisibility, withCompactHiddenResult } from "../src/tool-output-visibility.ts";
 
 initTheme("dark", false);
 
