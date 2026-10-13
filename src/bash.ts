@@ -109,6 +109,9 @@ async function executeSingleRemoteBash(input: {
 	const operations = new RemoteBashOperations(input.manager, session, input.spawnSsh, input.connectTimeout);
 	const remoteBashTool = createBashToolDefinition(input.cwd, { operations });
 	const result = await remoteBashTool.execute(input.toolCallId, input.localParams, input.signal, input.onUpdate, input.ctx);
+	// Pi 1.x resolves nonzero exits as error results. Remote callers and batch
+	// aggregation retain their existing thrown-error contract; local calls stay native.
+	if (result.isError) throw new Error(getTextContent(result));
 	const finalSession = operations.currentSession;
 	const details: RemoteBashDetails = {
 		...(result.details ?? {}),
