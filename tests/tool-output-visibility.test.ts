@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { initTheme, ToolExecutionComponent } from "@earendil-works/pi-coding-agent";
-import { Container, Text, visibleWidth } from "@earendil-works/pi-tui";
+import { Container, Text, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import remoteSshExtension from "../src/index.ts";
 import { installToolOutputVisibility, withCompactHiddenResult } from "../src/tool-output-visibility.ts";
 
@@ -68,6 +68,55 @@ describe("remote tool output visibility", () => {
 		expect(first.render(80).join("\n")).toContain("first body");
 		expect(first.render(80).join("\n")).not.toContain("second body");
 		expect(second.render(80).join("\n")).toContain("second body");
+	});
+
+	test("expanded renderer exceptions retain visible output and native box framing", () => {
+		let failCall = false;
+		let failResult = false;
+		const tool = withCompactHiddenResult({
+			name: "read", label: "read", description: "test tool", parameters: {},
+			renderCall: () => { if (failCall) throw new Error("call"); return new Text("call", 0, 0); },
+			renderResult: () => { if (failResult) throw new Error("result"); return new Text("VISIBLE RESULT", 0, 0); },
+		});
+		const component = new ToolExecutionComponent("read", "failure", {}, {}, tool as never, ui, process.cwd());
+		component.setExpanded(true);
+		component.updateResult({ content: [{ type: "text", text: "FALLBACK RESULT" }] } as never);
+		failCall = true;
+		component.setOutputPad(3);
+		expect(component.render(80).join("\n")).toContain("VISIBLE RESULT");
+		failCall = false;
+		failResult = true;
+		component.setOutputPad(3);
+		const nativeFallback = new ToolExecutionComponent("read", "native-failure", {}, { outputPad: 3 }, {
+			...tool, renderShell: "default", renderCall: () => new Text("call", 0, 0),
+			renderResult: () => { throw new Error("result"); },
+		} as never, ui, process.cwd());
+		nativeFallback.setExpanded(true);
+		nativeFallback.updateResult({ content: [{ type: "text", text: "FALLBACK RESULT" }] } as never);
+		expect(component.render(80)).toEqual(nativeFallback.render(80));
+	});
+
+	test("renderer recovery never receives a fallback as its own last component", () => {
+		let failing = false;
+		const render = (_value: unknown, _theme: unknown, context: { lastComponent?: Component }) => {
+			if (failing || (context.lastComponent && !(context.lastComponent instanceof Container))) throw new Error("renderer failed");
+			const component = new Container();
+			component.addChild(new Text("CUSTOM RENDERER", 0, 0));
+			return component;
+		};
+		const tool = withCompactHiddenResult({
+			name: "read", label: "read", description: "test tool", parameters: {},
+			renderCall: render,
+			renderResult: (_result: unknown, _options: unknown, theme: unknown, context: { lastComponent?: Component }) => render(undefined, theme, context),
+		});
+		const component = new ToolExecutionComponent("read", "recovery", {}, {}, tool as never, ui, process.cwd());
+		component.setExpanded(true);
+		component.updateResult({ content: [{ type: "text", text: "FALLBACK RESULT" }] } as never);
+		failing = true;
+		component.setOutputPad(3);
+		failing = false;
+		component.setOutputPad(1);
+		expect(Bun.stripANSI(component.render(80).join("\n")).match(/CUSTOM RENDERER/g)).toHaveLength(2);
 	});
 
 	test("error collapse restores the result renderer's own component", () => {

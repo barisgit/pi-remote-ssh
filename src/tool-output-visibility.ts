@@ -2,9 +2,11 @@ import {
 	ToolExecutionComponent,
 	keyHint,
 	type ToolDefinition,
+	type AgentToolResult,
 } from "@earendil-works/pi-coding-agent";
-import { Box, Container, Text, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
+import { Box, Container, Text, getCapabilities, getImageDimensions, imageFallback, truncateToWidth, visibleWidth, type Component } from "@earendil-works/pi-tui";
 import { isAbsolute, relative } from "node:path";
+import { stripVTControlCharacters } from "node:util";
 
 type ThemeLike = {
 	fg: (color: string, text: string) => string;
@@ -28,6 +30,7 @@ type StatusLineOptions = {
 type ToolExecutionComponentPatched = Record<PropertyKey, any>;
 
 const COMPACT_HIDDEN_RESULT_KEY = Symbol.for("pi.toolOutputVisibility.compactHiddenResult");
+const fallbackComponents = new WeakSet<Component>();
 const ORIGINAL_GET_TEXT_OUTPUT_KEY = Symbol.for("pi.toolOutputVisibility.originalGetTextOutput");
 
 // Call and result renderers share one box, but retain their own lastComponent contracts.
@@ -57,8 +60,12 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 		renderCall(args, theme, context) {
 			if (context.expanded) {
 				const previous = frames.get(context.state);
-				const lastComponent = previous?.call ?? (context.lastComponent instanceof DynamicCompactCallText ? undefined : context.lastComponent);
-				const call = tool.renderCall?.(args, theme, { ...context, lastComponent }) ?? lastComponent ?? new Text("", 0, 0);
+				frames.delete(context.state);
+				const lastComponent = rendererLastComponent(previous?.call ?? context.lastComponent);
+				const call = renderOrFallback(
+					() => tool.renderCall?.(args, theme, { ...context, lastComponent }) ?? lastComponent,
+					() => expandedCallFallback(tool.name, args, theme as ThemeLike),
+				);
 				if (tool.renderShell === "self") return call;
 
 				const bg = context.isPartial ? "toolPendingBg" : context.isError ? "toolErrorBg" : "toolSuccessBg";
@@ -83,8 +90,11 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 			const sanitizedResult = sanitizeToolResultPayload(result);
 			if (options.expanded) {
 				const frame = frames.get(context.state);
-				const lastComponent = frame?.result ?? (isHiddenResult(context.lastComponent) ? undefined : context.lastComponent);
-				const rendered = tool.renderResult?.(sanitizedResult, options, theme, { ...context, lastComponent }) ?? new Container();
+				const lastComponent = rendererLastComponent(frame?.result ?? context.lastComponent);
+				const rendered = renderOrFallback(
+					() => tool.renderResult?.(sanitizedResult, options, theme, { ...context, lastComponent }),
+					() => expandedResultFallback(sanitizedResult, context.showImages, theme as ThemeLike),
+				);
 				if (!frame) return rendered;
 
 				// Pi invokes renderCall before renderResult on every update. Returning the
@@ -99,7 +109,7 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 			}
 
 			if (context.isError) {
-				const lastComponent = isHiddenResult(context.lastComponent) ? undefined : context.lastComponent;
+				const lastComponent = rendererLastComponent(context.lastComponent);
 				return tool.renderResult?.(sanitizedResult, options, theme, { ...context, lastComponent }) ?? new Text(theme.fg("error", "failed"), 0, 0);
 			}
 
@@ -107,6 +117,43 @@ export function withCompactHiddenResult<TDefinition>(definition: TDefinition): T
 		},
 	};
 	return wrapped as TDefinition;
+}
+
+// Catch inside the wrapper so Pi cannot place exception fallback outside our box.
+function renderOrFallback(render: () => Component | undefined, fallback: () => Component): Component {
+	try {
+		const component = render();
+		if (component) return component;
+	} catch {
+		// Native Pi also discards a failed renderer's last component.
+	}
+	const component = fallback();
+	fallbackComponents.add(component);
+	return component;
+}
+
+function rendererLastComponent(component: Component | undefined): Component | undefined {
+	return component && !(component instanceof DynamicCompactCallText) && !isHiddenResult(component) && !fallbackComponents.has(component) ? component : undefined;
+}
+
+function expandedCallFallback(name: string, args: unknown, theme: ThemeLike): Text {
+	const title = theme.fg("toolTitle", theme.bold(name));
+	const entries = args == null ? [] : typeof args === "object" && !Array.isArray(args) ? Object.entries(args) : [["args", args]];
+	const lines = entries.map(([key, value]) => {
+		const text = typeof value === "string" ? value : JSON.stringify(value, null, 2) ?? String(value);
+		return `  ${key}: ${text.replace(/\t/g, "   ").replace(/\r/g, "").split("\n").join("\n    ")}`;
+	});
+	return new Text(lines.length ? `${title}\n${theme.fg("muted", lines.join("\n"))}` : title, 0, 0);
+}
+
+function expandedResultFallback(result: AgentToolResult<unknown>, showImages: boolean, theme: ThemeLike): Text {
+	const blocks = result.content.filter((part) => part.type === "text").map((part) => stripVTControlCharacters(part.text).replace(/\r/g, ""));
+	if (!showImages || !getCapabilities().images) {
+		for (const part of result.content) {
+			if (part.type === "image") blocks.push(imageFallback(part.mimeType, getImageDimensions(part.data, part.mimeType) ?? undefined));
+		}
+	}
+	return new Text(blocks.join("\n").split("\n").map((line) => theme.fg("toolOutput", line)).join("\n"), 0, 0);
 }
 
 function hiddenResult() {
