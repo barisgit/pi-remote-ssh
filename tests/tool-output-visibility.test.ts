@@ -78,9 +78,10 @@ describe("remote tool output visibility", () => {
 			renderCall: () => { if (failCall) throw new Error("call"); return new Text("call", 0, 0); },
 			renderResult: () => { if (failResult) throw new Error("result"); return new Text("VISIBLE RESULT", 0, 0); },
 		});
+		const result = { content: [{ type: "text", text: "FALLBACK\x08\x00\uFFF9 RESULT" }] };
 		const component = new ToolExecutionComponent("read", "failure", {}, {}, tool as never, ui, process.cwd());
 		component.setExpanded(true);
-		component.updateResult({ content: [{ type: "text", text: "FALLBACK RESULT" }] } as never);
+		component.updateResult(result as never);
 		failCall = true;
 		component.setOutputPad(3);
 		expect(component.render(80).join("\n")).toContain("VISIBLE RESULT");
@@ -92,7 +93,7 @@ describe("remote tool output visibility", () => {
 			renderResult: () => { throw new Error("result"); },
 		} as never, ui, process.cwd());
 		nativeFallback.setExpanded(true);
-		nativeFallback.updateResult({ content: [{ type: "text", text: "FALLBACK RESULT" }] } as never);
+		nativeFallback.updateResult(result as never);
 		expect(component.render(80)).toEqual(nativeFallback.render(80));
 	});
 

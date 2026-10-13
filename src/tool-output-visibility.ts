@@ -147,7 +147,7 @@ function expandedCallFallback(name: string, args: unknown, theme: ThemeLike): Te
 }
 
 function expandedResultFallback(result: AgentToolResult<unknown>, showImages: boolean, theme: ThemeLike): Text {
-	const blocks = result.content.filter((part) => part.type === "text").map((part) => stripVTControlCharacters(part.text).replace(/\r/g, ""));
+	const blocks = result.content.filter((part) => part.type === "text").map((part) => stripVTControlCharacters(part.text).replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\uFFF9-\uFFFB]/g, "").replace(/\r/g, ""));
 	if (!showImages || !getCapabilities().images) {
 		for (const part of result.content) {
 			if (part.type === "image") blocks.push(imageFallback(part.mimeType, getImageDimensions(part.data, part.mimeType) ?? undefined));
